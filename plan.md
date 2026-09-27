@@ -25,7 +25,7 @@ The primary user is an ML engineer or service owner preparing a model release. T
 
 The workflow is:
 
-1. Register a baseline and candidate. Record model identifier and digest, serving image, prompt version, quantization, sampling settings (temperature, seed, `max_tokens`), structured-output mode (free text vs. JSON-schema-constrained decoding), resource configuration, and the execution environment (GPU model and memory, driver/CUDA and vLLM versions).
+1. Register a baseline and candidate by choosing two model specs from `models/`. Record model identifier and digest, serving image, prompt version, quantization, sampling settings (temperature, seed, `max_tokens`), structured-output mode (free text vs. JSON-schema-constrained decoding), resource configuration, and the execution environment (GPU model and memory, driver/CUDA and vLLM versions).
 2. Select a frozen synthetic evaluation suite and a load profile.
 3. Check that the run is valid: both endpoints are healthy and the baseline reproduces its previously approved metrics within tolerance.
 4. Run matched requests against both versions and collect outputs, traces, quality scores, latency, errors, resource use, and estimated cost.
@@ -266,9 +266,15 @@ Rules for Colab runs:
 
 - **Each evaluation is a batch job.** Start both vLLM servers, warm up, run the suite and load profile, write `runs/<run_id>/` (manifest, per-case results, metrics, decision, report), copy it to Google Drive, then disconnect. No long-lived endpoints.
 - **The runner runs inside the notebook** and calls vLLM on `localhost`. No ngrok or cloudflared tunnels: they expose an endpoint publicly and add network latency to the measurements.
-- **Baseline and candidate run in the same session**, on the same GPU at the same time, each server with `--gpu-memory-utilization ≈ 0.4`, and with requests interleaved. Never compare latency across sessions.
+- **Baseline and candidate run in the same session** on the same GPU. Never compare latency across sessions. The runner picks one of two execution modes with `registry.fits_concurrently` (combined weights ≤ 65% of GPU memory):
+  - **Concurrent:** both vLLM servers up (each `--gpu-memory-utilization ≈ 0.45`) with requests interleaved. Used on an 80 GB A100 or with quantized specs; the shipped FP8 pair (about 19 GB of weights) runs this way on a 40 GB A100.
+  - **Sequential:** one server at a time on the whole GPU (`≈ 0.90`), baseline then candidate, each with its own warm-up. Needed when combined weights are too large, e.g. two 8B bf16 models on a 40 GB A100 (about 32 GB of weights). There is no contention, but it is exposed to drift within the session, so the order is recorded and repeated load runs alternate it (baseline→candidate, then candidate→baseline).
+  The mode is recorded in the manifest.
 - **The manifest records the environment:** GPU model and memory (Colab can assign a 40 GB or 80 GB A100), driver and CUDA versions, vLLM version, and model digests. Environment differences show up in the report and, through the baseline replay check, in run validity.
-- **Model size:** 3–8B instruct models (bf16, or AWQ/GPTQ for quantized candidates) so two servers fit on one 40 GB A100 with room for KV cache.
+- **Model specs:** each model configuration is an editable YAML file in `models/` (`src/release_gate/registry.py`), selected by name (`--baseline llama-3.1-8b-instruct-fp8 --candidate qwen3-8b-fp8`). A spec pins the Hugging Face id and revision, vLLM serving settings, approximate weight memory, and default request settings. To use another model, copy a spec and edit it. Prompt and suite are chosen per run, not in the spec.
+- **Model size and precision:** up to about 8B parameters. Shipped specs use **FP8 weights** (`quantization: fp8`, quantized by vLLM at load time from the original checkpoint) with bf16 activations. The A100 has no native FP8, so vLLM runs weight-only FP8 (W8A16): weight memory roughly halves (~9 GB per 8B model) with a modest speed gain. `dtype` only sets activation precision, and fp16 saves no memory over bf16. 4-bit AWQ/GPTQ needs separately published checkpoints and is a possible later variant.
+- **Secrets:** gated models (Llama) need the license accepted on Hugging Face and a Colab secret `HF_TOKEN`. Tokens never go in specs or the repository.
+- **Cross-family comparisons:** different model families use different tokenizers, so token counts are reported but not compared across baseline and candidate. Cost uses the hourly hardware model, which is tokenizer-independent.
 - **Cost model:** `hardware_hourly_rate_usd` in the policy = the A100's compute units per hour × the price per unit. Check the current rate in Colab's resources panel and record it with the policy version.
 - **Development never uses the GPU.** Runner, scorer and report work happens locally against the mock endpoint. Colab is opened only for a real evaluation, which keeps compute-unit spend predictable.
 
@@ -477,9 +483,12 @@ Once that works, expand the suite, add traces, load testing, and fault injection
 
 - **Hardware and serving backend** (2026-09-27): vLLM on a Google Colab A100 (compute units) for real evaluation and load runs; local mock endpoint for development and CI; Kubernetes demo local on CPU. See §9 Execution environments.
 
+- **Demo models** (2026-09-27): baseline `meta-llama/Llama-3.1-8B-Instruct` (spec `llama-3.1-8b-instruct-fp8`, gated, Llama 3.1 Community License) and candidate `Qwen/Qwen3-8B` (spec `qwen3-8b-fp8`, Apache-2.0, thinking disabled). Both use FP8 weights so the pair runs concurrently on a 40 GB A100. Models are editable through the spec registry in `models/`. Swapping a model means adding or editing a YAML file, not changing code.
+
 ### Open
 
-- **Model pair for the demo:** which 3–8B baseline model family and which candidate variants (prompt, quantization, or model size). Must have an open license and fit two servers on a 40 GB A100.
+- **Candidate variants beyond the model swap:** prompt v2, bf16 vs FP8 of the same model (a precision-change release), 4-bit AWQ specs, a Qwen3 thinking-mode spec. Each is just another spec or prompt version.
+- **Revision pins:** replace `revision: main` with commit SHAs before the first release-benchmark run.
 - **Sampling mode:** temperature 0 for all runs, or temperature > 0 with `k` repeats per case.
 - **Structured output:** whether constrained JSON decoding is allowed, and whether baseline and candidate must use the same mode.
 - **Proposed repository layout** (to confirm in Phase 0):
@@ -489,7 +498,7 @@ llm-release-gate/
   policies/            # versioned policy.yaml files
   suites/              # generated and reviewed suites, by version
   prompts/             # versioned prompt templates
-  models/              # baseline/candidate registration configs
+  models/              # editable model specs, one YAML per configuration
   src/release_gate/
     generator/  adapters/  runner/  scorers/  stats/  gate/  report/  cli.py
   tests/fixtures/      # gate fixture metrics and expected decisions

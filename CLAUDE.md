@@ -59,17 +59,19 @@ tests/fixtures/  proxy/  deploy/  .github/workflows/
 
 - **MVP:** Python, pydantic, httpx (async), pytest, JSON + SQLite storage, Jinja reports. Serving is **vLLM on a Colab A100** for real runs and a local mock OpenAI-compatible endpoint for development and tests (`plan.md` §9 Execution environments).
 - **Colab rules:** each evaluation is a batch job. The runner runs inside the notebook against `localhost` (no tunnels). Baseline and candidate share one session and one GPU. The manifest records GPU and vLLM versions. Never write code that needs a GPU for local tests or CI.
+- **Models:** chosen through editable specs in `models/*.yaml`, loaded by `release_gate.registry` by name. Never hard-code model ids, ports or sampling settings in code. Current pair: `llama-3.1-8b-instruct-fp8` (baseline, gated) vs `qwen3-8b-fp8` (candidate, `enable_thinking: false`). Specs use FP8 weights (`quantization: fp8`, bf16 activations), so the pair runs concurrently on a 40 GB A100. `dtype` is activation precision only. HF tokens live only in the Colab secret `HF_TOKEN`.
 - **Later phases only:** FastAPI, OpenTelemetry, Prometheus/Grafana, MLflow, Docker, kind/k3d, GitHub Actions, UI.
 - Don't introduce a later-phase dependency before the first end-to-end report works (`plan.md` §17).
 
 ## Development environment
 
 - Windows 11. The shell tools are PowerShell 5.1 and Git Bash. Use forward slashes in code paths and `pathlib` in Python.
-- Virtualenv: `.venv/` (Python 3.11). Run tests with `.venv/Scripts/python -m pytest -q`. Until `pyproject.toml` exists, `tests/conftest.py` puts `src/` on the path.
-- Gate on a saved metrics file (after delegated task T005): `.venv/Scripts/gate decide --metrics <file> --policy policies/policy_v1.yaml [--out <json>] [--report <md>]`
+- Virtualenv: `.venv/` (Python 3.11), package installed editable. Run tests with `.venv/Scripts/python -m pytest -q`. Lint with `.venv/Scripts/python -m ruff check .` and `ruff format --check .`.
+- Gate on a saved metrics file: `.venv/Scripts/gate decide --metrics <file> --policy policies/policy_v1.yaml [--out <json>] [--report <md>]`
+- Model specs (after delegated task T008): `gate models list`, `gate models show <name>`, `gate models serve-cmd <name> --port 8001`
 - Planned CLI:
   - `gate suite generate --seed <n>` / `gate suite validate`
-  - `gate run --baseline <cfg> --candidate <cfg> --suite <v> --policy <v>`
+  - `gate run --baseline <spec> --candidate <spec> --suite <v> --policy <v>`
   - `gate replay <run_id> [--policy <v>]`
 
 ## Testing expectations

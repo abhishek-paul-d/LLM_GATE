@@ -118,6 +118,38 @@
       ],
       "review_by_claude": false,
       "status": "reviewed"
+    },
+    {
+      "id": "T008",
+      "file": "src/release_gate/cli.py",
+      "prompt": "Add a `models` command group to the existing argparse CLI in src/release_gate/cli.py. Read src/release_gate/registry.py first; do NOT modify registry.py, anything under src/release_gate/gate/, or models/*.yaml. Keep the existing `decide` subcommand and the ExitUsageArgumentParser behaviour unchanged (usage errors exit 4, never 2).\n\nAdd a `models` subcommand with its own required sub-subcommands (use parser_class=ExitUsageArgumentParser for every add_subparsers call). Every `models` sub-subcommand accepts `--models-dir PATH` (default: release_gate.registry.DEFAULT_MODELS_DIR, i.e. `models`).\n\n1. `gate models list [--models-dir PATH]`: for each name from registry.list_model_specs(models_dir), load it with registry.load_model_spec(name, models_dir) and print one tab-separated line to stdout: `<name>\t<model.id>\t<revision>\t<pinned|unpinned>\t<gated|open>` (pinned = spec.revision_pinned). Print nothing extra. Return 0. If the directory has no specs, print `no model specs in <dir>` to stderr and return 0.\n2. `gate models show NAME_OR_PATH [--models-dir PATH]`: load the spec and print spec.model_dump_json(indent=2) to stdout. Return 0.\n3. `gate models serve-cmd NAME_OR_PATH --port PORT [--gpu-memory-utilization FLOAT] [--models-dir PATH]`: print the command from spec.vllm_serve_args(port, gpu_memory_utilization) joined with single spaces (use shlex.join) to stdout. Return 0.\n\nError handling for all three: catch FileNotFoundError, OSError, ValueError, yaml.YAMLError and pydantic.ValidationError when loading specs; print `error: <message>` to stderr and return EXIT_USAGE (4). Note pydantic.ValidationError is a subclass of ValueError; that is fine.\n\nTests: create tests/test_cli_models.py (pytest; call main([...]) directly; use capsys and tmp_path). Cover: `models list` against the real models/ directory prints exactly two lines, first starting with `llama-3.1-8b-instruct-fp8\tmeta-llama/Llama-3.1-8B-Instruct\tmain\tunpinned\tgated` and second starting with `qwen3-8b-fp8\tQwen/Qwen3-8B\tmain\tunpinned\topen`; `models show qwen3-8b-fp8` prints JSON whose request.chat_template_kwargs.enable_thinking is false; `models serve-cmd qwen3-8b-fp8 --port 8002 --gpu-memory-utilization 0.9` output starts with `vllm serve Qwen/Qwen3-8B --revision main` and contains `--port 8002`, `--quantization fp8` and `--gpu-memory-utilization 0.9`; `models show does-not-exist` returns 4 and stderr starts with `error:`; a spec file in tmp_path whose `name` differs from its file stem returns 4 via `models show <path>`; `models` with no sub-subcommand raises SystemExit with code 4; `models list --models-dir <empty tmp_path>` returns 0. Pass the real models dir explicitly as ROOT / 'models' where ROOT = Path(__file__).resolve().parents[1], so tests do not depend on the working directory. Run `.venv/Scripts/python -m ruff check .`, `.venv/Scripts/python -m ruff format --check .` and the full test suite; all must pass.",
+      "context_files": [
+        "src/release_gate/cli.py",
+        "src/release_gate/registry.py",
+        "models/qwen3-8b-fp8.yaml",
+        "models/llama-3.1-8b-instruct-fp8.yaml",
+        "tests/test_cli.py",
+        "CLAUDE.md"
+      ],
+      "depends_on": [],
+      "review_by_claude": true,
+      "status": "pending"
+    },
+    {
+      "id": "T009",
+      "file": "models/README.md",
+      "prompt": "Write models/README.md explaining how to choose and add models. Read src/release_gate/registry.py and both YAML files in models/ first. Plain, factual, under 90 lines, no emojis. Do not change any other file.\n\nSections:\n1. `# Model specs` - one paragraph: each YAML file describes one side of a comparison (weights, vLLM serving settings, default request settings); a spec is selected by its name, which must equal the file name without .yaml; the prompt and the test suite are chosen per run, not here.\n2. `## Shipped specs` - table: Name | Hugging Face model | License | Gated | Notes. Rows (both FP8 weights, bf16 activations): llama-3.1-8b-instruct-fp8 (meta-llama/Llama-3.1-8B-Instruct, Llama 3.1 Community License, yes, accept the license on Hugging Face and add a Colab secret named HF_TOKEN) and qwen3-8b-fp8 (Qwen/Qwen3-8B, Apache-2.0, no, thinking disabled with chat_template_kwargs.enable_thinking: false).\n3. `## Add or change a model` - numbered steps: copy an existing spec to models/<new-name>.yaml; set `name` to <new-name> (lowercase letters, digits, '.', '_', '-'); edit model.id, revision, license, gated, serving and request fields; set serving.weights_gb (roughly 2 GB per billion parameters in bf16, about 0.7 GB per billion for 4-bit AWQ/GPTQ); validate with `gate models show <new-name>`; list all with `gate models list`.\n4. `## Field notes` - bullets: revision (use a 40-character commit SHA for release runs; `main` is fine while developing; the run manifest records the resolved SHA); structured_output (`none` measures whether the model produces valid JSON by itself, `json_schema` makes vLLM constrain decoding; changing it changes what is being tested); chat_template_kwargs (Qwen3 specs must set enable_thinking explicitly or loading fails); extra_args (extra `vllm serve` flags; flags the spec manages such as --port, --max-model-len, --seed, --gpu-memory-utilization are refused); gpu_memory_utilization (leave null so the runner picks it from the execution mode).\n5. `## Precision, GPU memory and execution mode` - The shipped specs set `quantization: fp8` with `dtype: bfloat16`: vLLM converts the original checkpoint's weights to FP8 when loading, and `dtype` only controls activation/compute precision (fp16 would save no memory over bf16). The A100 has no native FP8, so this runs as weight-only FP8: weight memory roughly halves (about 9 GB per 8B model instead of about 16 GB) with a modest speed gain. Both FP8 specs together (about 19 GB) fit on a 40 GB A100 with room for KV cache, so the runner uses concurrent mode (both servers up, requests interleaved). A bf16 pair (about 32 GB) would need sequential mode on 40 GB: one server at a time using the whole GPU, same Colab session. To compare full precision, copy a spec, set `quantization: null` and `weights_gb` to about 16.5, and give it a name without `-fp8`. The check is registry.fits_concurrently. Print a server command with `gate models serve-cmd <name> --port 8001`.\n6. `## Secrets` - never put Hugging Face tokens in spec files or the repository; use the Colab secret HF_TOKEN.",
+      "context_files": [
+        "src/release_gate/registry.py",
+        "models/llama-3.1-8b-instruct-fp8.yaml",
+        "models/qwen3-8b-fp8.yaml",
+        "plan.md"
+      ],
+      "depends_on": [
+        "T008"
+      ],
+      "review_by_claude": false,
+      "status": "pending"
     }
   ]
 }

@@ -1,0 +1,35 @@
+# Model spec: Qwen3 8B served by vLLM with FP8 weights, non-thinking mode.
+# Select with:  --candidate qwen3-8b-fp8   (name must match this file name)
+# To try another model, copy this file, rename it, and edit it. See models/README.md.
+
+spec_version: 1
+name: qwen3-8b-fp8
+description: Qwen3 8B, FP8 weights quantized at load time, bf16 activations, thinking disabled.
+
+model:
+  id: Qwen/Qwen3-8B
+  revision: main          # pin a 40-char commit SHA for release runs
+  license: apache-2.0
+  gated: false
+
+serving:
+  backend: vllm
+  dtype: bfloat16         # activation/compute precision; weight precision is set by quantization
+  # vLLM quantizes the original bf16 checkpoint to FP8 when loading. On an A100 (no native
+  # FP8) this runs as weight-only FP8 (W8A16): weight memory roughly halves, speed gain is modest.
+  quantization: fp8
+  max_model_len: 8192
+  gpu_memory_utilization: null   # chosen by the runner from the execution mode
+  weights_gb: 9.5         # ~7B params at 1 byte + embeddings/lm_head kept in bf16
+  extra_args: []
+
+request:
+  temperature: 0.0
+  top_p: 1.0
+  max_tokens: 512
+  seed: 1234
+  structured_output: none
+  # Qwen3 emits <think>...</think> before answering unless this is false. The registry
+  # refuses Qwen3 specs that leave it unset. A thinking-mode candidate is a separate spec.
+  chat_template_kwargs:
+    enable_thinking: false

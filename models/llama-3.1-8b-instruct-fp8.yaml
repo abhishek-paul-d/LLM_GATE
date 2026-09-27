@@ -1,0 +1,32 @@
+# Model spec: Llama 3.1 8B Instruct served by vLLM with FP8 weights.
+# Select with:  --baseline llama-3.1-8b-instruct-fp8   (name must match this file name)
+# To try another model, copy this file, rename it, and edit it. See models/README.md.
+
+spec_version: 1
+name: llama-3.1-8b-instruct-fp8
+description: Meta Llama 3.1 8B Instruct, FP8 weights quantized at load time, bf16 activations.
+
+model:
+  id: meta-llama/Llama-3.1-8B-Instruct
+  revision: main          # pin a 40-char commit SHA for release runs
+  license: llama3.1       # Llama 3.1 Community License
+  gated: true             # accept the license on Hugging Face; Colab needs secret HF_TOKEN
+
+serving:
+  backend: vllm
+  dtype: bfloat16         # activation/compute precision; weight precision is set by quantization
+  # vLLM quantizes the original bf16 checkpoint to FP8 when loading. On an A100 (no native
+  # FP8) this runs as weight-only FP8 (W8A16): weight memory roughly halves, speed gain is modest.
+  quantization: fp8
+  max_model_len: 8192     # triage prompts are short; a smaller context leaves more KV cache
+  gpu_memory_utilization: null   # chosen by the runner from the execution mode
+  weights_gb: 9.2         # ~7B params at 1 byte + embeddings/lm_head kept in bf16
+  extra_args: []
+
+request:
+  temperature: 0.0
+  top_p: 1.0
+  max_tokens: 512
+  seed: 1234
+  structured_output: none
+  chat_template_kwargs: {}
