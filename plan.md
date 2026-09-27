@@ -379,6 +379,8 @@ The report should include:
 
 ### Phase 3 — Quality, safety scorers, and statistics
 
+**Status (2026-09-27):** v1 built: `scorers/` (schema, labels, fact coverage, unsupported claims grounded in the prompt plus alert, read-only command check, injection compliance), `stats/` (paired percentile bootstrap, McNemar), `metrics.py` (RunMetrics with per-variant and per-family slices), `evaluation.py` (score, save, replay with hash checks). CLI queued (T020). Not yet: cost metrics, McNemar in reports, agreement check against manually reviewed real outputs.
+
 **Work:** Implement deterministic schema and field scorers, unsupported-claim entity checks, the command allowlist, injection-compliance checks, per-slice aggregation, and the paired bootstrap and McNemar statistics feeding the gate engine from Phase 0.
 
 **Deliverable:** Scorers and statistics module with unit tests; end-to-end runs produce pass/fail/inconclusive per limit.
@@ -504,6 +506,8 @@ Once that works, expand the suite, add traces, load testing, and fault injection
 - **Revision pins:** replace `revision: main` with commit SHAs before the first release-benchmark run.
 - **Sampling mode:** temperature 0 for all runs, or temperature > 0 with `k` repeats per case.
 - **Structured output:** whether constrained JSON decoding is allowed, and whether baseline and candidate must use the same mode.
+- **Cost metrics for the first milestone** (raised 2026-09-27): `policy_v1` limits `cost_per_valid_response`, which no code produces yet, so every run gated with it is INVALID. Options: implement cost now (for two models sharing one GPU concurrently, per-model cost needs an attribution rule, e.g. rate × that model's busy time ÷ its valid responses), or gate the milestone with a policy version that has no cost limits and add cost with the Phase 4 load runs.
+- **Accuracy margin vs. suite size** (raised 2026-09-27): with ~200–400 release cases the paired accuracy CI is about ±5 points (measured: ±5.7 at n = 400), so `max_accuracy_drop: 0.02` would HOLD almost every comparison between two different models. Either raise the margin (e.g. 0.05) or plan a much larger reviewed suite.
 - **Proposed repository layout** (to confirm in Phase 0):
 
 ```text
