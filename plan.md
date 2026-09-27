@@ -379,7 +379,7 @@ The report should include:
 
 ### Phase 3 — Quality, safety scorers, and statistics
 
-**Status (2026-09-27):** v1 built: `scorers/` (schema, labels, fact coverage, unsupported claims grounded in the prompt plus alert, read-only command check, injection compliance), `stats/` (paired percentile bootstrap, McNemar), `metrics.py` (RunMetrics with per-variant and per-family slices), `evaluation.py` (score, save, replay with hash checks). CLI queued (T020). Not yet: cost metrics, McNemar in reports, agreement check against manually reviewed real outputs.
+**Status (2026-09-27):** v1 built: `scorers/` (schema, labels, fact coverage, unsupported claims grounded in the prompt plus alert, read-only command check, injection compliance), `stats/` (paired percentile bootstrap, McNemar), `metrics.py` (RunMetrics with per-variant and per-family slices), `evaluation.py` (score, save, replay with hash checks). CLI done (`gate score`, `gate replay`). Not yet: cost metrics (Phase 4), McNemar in reports, agreement check against manually reviewed real outputs.
 
 **Work:** Implement deterministic schema and field scorers, unsupported-claim entity checks, the command allowlist, injection-compliance checks, per-slice aggregation, and the paired bootstrap and McNemar statistics feeding the gate engine from Phase 0.
 
@@ -389,7 +389,7 @@ The report should include:
 
 ### Phase 4 — Load tests, fault injection, and observability
 
-**Work:** Add a repeatable load profile with warm-up and repeated runs; capture latency, throughput, token use, error rate before and after retries, and resource metrics (GPU utilization and memory through `nvidia-smi` or vLLM's `/metrics` on Colab). Load tests run on Colab in the same session as the quality run. Build the fault-injection proxy. Connect traces to experiment and case IDs.
+**Work:** Add cost metrics (`cost_per_valid_response` under the policy's cost model; for two models sharing one GPU, an attribution rule such as each model's busy time) and a policy version with cost limits. Add a repeatable load profile with warm-up and repeated runs; capture latency, throughput, token use, error rate before and after retries, and resource metrics (GPU utilization and memory through `nvidia-smi` or vLLM's `/metrics` on Colab). Load tests run on Colab in the same session as the quality run. Build the fault-injection proxy. Connect traces to experiment and case IDs.
 
 **Deliverable:** Per-run dashboard and trace links in the report.
 
@@ -496,6 +496,8 @@ Once that works, expand the suite, add traces, load testing, and fault injection
 
 ### Resolved
 
+- **Cost metrics** (2026-09-28): deferred to Phase 4, where load runs measure per-model GPU time. The first milestone gates with `policies/policy_v2.yaml` (policy_v1 without cost limits); a later policy version adds cost limits back.
+
 - **Hardware and serving backend** (2026-09-27): vLLM on a Google Colab A100 (compute units) for real evaluation and load runs; local mock endpoint for development and CI; Kubernetes demo local on CPU. See §9 Execution environments.
 
 - **Demo models** (2026-09-27): baseline `meta-llama/Llama-3.1-8B-Instruct` (spec `llama-3.1-8b-instruct-fp8`, gated, Llama 3.1 Community License) and candidate `Qwen/Qwen3-8B` (spec `qwen3-8b-fp8`, Apache-2.0, thinking disabled). Both use FP8 weights so the pair runs concurrently on a 40 GB A100. Models are editable through the spec registry in `models/`. Swapping a model means adding or editing a YAML file, not changing code.
@@ -506,7 +508,6 @@ Once that works, expand the suite, add traces, load testing, and fault injection
 - **Revision pins:** replace `revision: main` with commit SHAs before the first release-benchmark run.
 - **Sampling mode:** temperature 0 for all runs, or temperature > 0 with `k` repeats per case.
 - **Structured output:** whether constrained JSON decoding is allowed, and whether baseline and candidate must use the same mode.
-- **Cost metrics for the first milestone** (raised 2026-09-27): `policy_v1` limits `cost_per_valid_response`, which no code produces yet, so every run gated with it is INVALID. Options: implement cost now (for two models sharing one GPU concurrently, per-model cost needs an attribution rule, e.g. rate × that model's busy time ÷ its valid responses), or gate the milestone with a policy version that has no cost limits and add cost with the Phase 4 load runs.
 - **Accuracy margin vs. suite size** (raised 2026-09-27): with ~200–400 release cases the paired accuracy CI is about ±5 points (measured: ±5.7 at n = 400), so `max_accuracy_drop: 0.02` would HOLD almost every comparison between two different models. Either raise the margin (e.g. 0.05) or plan a much larger reviewed suite.
 - **Proposed repository layout** (to confirm in Phase 0):
 

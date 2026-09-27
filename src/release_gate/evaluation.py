@@ -155,9 +155,14 @@ def write_evaluation(run_dir: str | Path, evaluation: Evaluation) -> None:
     run_dir = Path(run_dir)
     if (run_dir / EVALUATION_FILE).exists():
         raise EvaluationError(f"{run_dir} is already scored; use replay to recompute it")
-    for name, text in evaluation.files().items():
-        (run_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    # evaluation.json marks the run as scored, so it is written last: an interrupted write leaves
+    # the run unscored (and re-scorable) instead of scored but impossible to replay.
+    files = evaluation.files()
+    marker = files.pop(EVALUATION_FILE)
     (run_dir / POLICY_FILE).write_bytes(evaluation.policy_bytes)
+    for name, text in files.items():
+        (run_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    (run_dir / EVALUATION_FILE).write_text(marker, encoding="utf-8", newline="\n")
 
 
 def replay_run(

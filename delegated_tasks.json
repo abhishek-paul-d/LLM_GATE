@@ -331,7 +331,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     }
   ]
 }

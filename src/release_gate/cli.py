@@ -2,6 +2,7 @@
 
 Suite validation exit code 1 means the suite has issues; it is not a HOLD decision.
 Exit 0 from ``gate run`` means the run completed and was saved; it is not a release decision.
+``gate replay`` returns 3 when the saved evaluation is not reproduced.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import yaml
 from pydantic import ValidationError
 
 from release_gate import registry
+from release_gate.evaluation import EvaluationError, evaluate_run, replay_run, write_evaluation
 from release_gate.gate import evaluate, load_metrics, load_policy
 from release_gate.generator import (
     FrozenSuiteError,
@@ -119,13 +121,28 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--run-id")
     run_parser.add_argument("--env-file", type=Path)
 
+    score_parser = subparsers.add_parser("score", help="score and gate a saved run")
+    score_parser.add_argument("run_dir", type=Path)
+    score_parser.add_argument("--policy", type=Path, required=True)
+    score_parser.add_argument("--mode", choices=("pre_deploy", "canary"), default="pre_deploy")
+    score_parser.add_argument("--suite", type=Path)
+    score_parser.add_argument("--prompt", type=Path)
+
+    replay_parser = subparsers.add_parser("replay", help="recompute a saved evaluation")
+    replay_parser.add_argument("run", type=Path)
+    replay_parser.add_argument("--policy", type=Path)
+    replay_parser.add_argument("--suite", type=Path)
+    replay_parser.add_argument("--prompt", type=Path)
+
     args = parser.parse_args(argv)
-    if args.command in ("models", "suite", "mock", "run"):
+    if args.command in ("models", "suite", "mock", "run", "score", "replay"):
         handlers = {
             "models": _run_models_command,
             "suite": _run_suite_command,
             "mock": _run_mock_command,
             "run": _run_command,
+            "score": _score_command,
+            "replay": _replay_command,
         }
         # Expected failures are handled inside the handler; this keeps an unexpected one from
         # escaping with exit 1, which CI would read as HOLD.
@@ -223,6 +240,57 @@ def _run_command(args: argparse.Namespace) -> int:
         print(f"wrote {run_dir} ({n_results} results)")
         return 0
     except (OSError, ValueError, yaml.YAMLError, RunError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+
+def _print_decision_line(evaluation) -> None:
+    decision = evaluation.decision
+    print(f"{decision.outcome.value} (exit {decision.exit_code}): {decision.reason}", file=sys.stderr)
+
+
+def _score_command(args: argparse.Namespace) -> int:
+    try:
+        evaluation = evaluate_run(
+            args.run_dir,
+            args.policy,
+            mode=args.mode,
+            suite_dir=args.suite,
+            prompt_path=args.prompt,
+        )
+        write_evaluation(args.run_dir, evaluation)
+        print(f"wrote {args.run_dir / 'decision.json'} and {args.run_dir / 'report.md'}")
+        _print_decision_line(evaluation)
+        return evaluation.decision.exit_code
+    except (OSError, ValueError, EvaluationError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+
+def _replay_command(args: argparse.Namespace) -> int:
+    run_dir = args.run
+    if not run_dir.exists() and (Path("runs") / run_dir).exists():
+        run_dir = Path("runs") / run_dir
+    try:
+        evaluation, differences = replay_run(
+            run_dir,
+            args.policy,
+            suite_dir=args.suite,
+            prompt_path=args.prompt,
+        )
+        if args.policy is not None:
+            print(f"what-if under {args.policy}: nothing was saved")
+        elif differences:
+            print(
+                "error: replay does not reproduce the saved evaluation: " + ", ".join(differences),
+                file=sys.stderr,
+            )
+            return 3
+        else:
+            print("replay reproduces the saved evaluation")
+        _print_decision_line(evaluation)
+        return evaluation.decision.exit_code
+    except (OSError, ValueError, EvaluationError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
 

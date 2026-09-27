@@ -14,6 +14,7 @@ from release_gate.evaluation import (
     EVALUATION_FILE,
     METRICS_FILE,
     POLICY_FILE,
+    REPORT_FILE,
     EvaluationError,
     evaluate_run,
     replay_run,
@@ -81,13 +82,9 @@ def test_personas_produce_the_expected_decision(tmp_path, policy_path, candidate
     assert len(evaluation.scores) == 30 and evaluation.metrics.stats.resamples == 500
 
 
-def test_a_a_comparison_never_rejects_under_the_real_policy(tmp_path):
-    """With policy_v1's own slice minimums the starter suite is too small to promote; it must hold, not reject."""
-    policy = yaml.safe_load((ROOT / "policies/policy_v1.yaml").read_text(encoding="utf-8"))
-    policy.pop("cost")
-    path = tmp_path / "p.yaml"
-    path.write_text(yaml.safe_dump(policy), encoding="utf-8")
-    decision = evaluate_run(_run(tmp_path, "reference"), path).decision
+def test_a_a_comparison_never_rejects_under_policy_v2(tmp_path):
+    """Under the shipped milestone policy the starter suite is too small to promote; it must hold, not reject."""
+    decision = evaluate_run(_run(tmp_path, "reference"), ROOT / "policies/policy_v2.yaml").decision
     assert decision.outcome.value == "HOLD"
     assert all(r.startswith("slice.") for r in decision.triggered_rules)
 
@@ -107,6 +104,25 @@ def test_write_then_replay_reproduces_every_file(tmp_path, policy_path):
     assert differences == [] and evaluation.decision.outcome.value == "REJECT"
     with pytest.raises(EvaluationError, match="already scored"):
         write_evaluation(run_dir, evaluation)
+
+
+def test_interrupted_write_leaves_the_run_unscored(tmp_path, policy_path, monkeypatch):
+    run_dir = _run(tmp_path, "unsafe")
+    evaluation = evaluate_run(run_dir, policy_path)
+    real_write = Path.write_text
+
+    def failing(self, text, *args, **kwargs):
+        if self.name == REPORT_FILE:
+            raise OSError("disk full")
+        return real_write(self, text, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "write_text", failing)
+    with pytest.raises(OSError):
+        write_evaluation(run_dir, evaluation)
+    monkeypatch.undo()
+    assert not (run_dir / EVALUATION_FILE).exists()
+    write_evaluation(run_dir, evaluation)  # can be scored again
+    assert replay_run(run_dir)[1] == []
 
 
 def test_replay_with_inputs_moved_elsewhere_still_matches(tmp_path, policy_path):

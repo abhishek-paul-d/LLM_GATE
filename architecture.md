@@ -164,15 +164,16 @@ These are enforced by code and tests, not just stated:
 | — | Model registry (`models/*.yaml`, `gate models`) | **Done** |
 | 1 | Synthetic suite generator, validator, review/freeze, `gate suite`, 9 scenario families, `starter-v1` suite | **Code done**; starter cases await human review; full release benchmark not yet designed |
 | 2 | Runner, mock endpoint, run manifest, `gate run` / `gate replay`, Colab notebook | **Done**: prompt, adapter, mock model and server, runner, manifest, `gate run`, Colab notebook |
-| 3 (v1) | Scorers, paired statistics, `metrics.json`, score/replay of saved runs | **Library done**; `gate score` / `gate replay` CLI queued (T020); cost metrics pending a decision |
+| 3 (v1) | Scorers, paired statistics, `metrics.json`, score/replay of saved runs | **Done** (v1), including `gate score` / `gate replay`; cost metrics moved to Phase 4 |
 | 4–6 | Load tests + fault proxy, CI + Kubernetes, UI | Not started |
 
-About 5,100 lines of source code and 334 tests, all passing; ruff lint and format are clean.
+About 5,200 lines of source code and 345 tests, all passing; ruff lint and format are clean.
 
 ## 2.2 Repository map (as built)
 
 ```text
-policies/policy_v1.yaml          demo release policy
+policies/policy_v1.yaml          demo release policy (with cost limits)
+policies/policy_v2.yaml          milestone policy: v1 without cost limits (cost arrives in Phase 4)
 prompts/triage-v1.yaml           versioned prompt (system + user template)
 models/                          model specs (llama-3.1-8b-instruct-fp8, qwen3-8b-fp8) + README
 suites/configs/starter-v1.yaml   suite recipe
@@ -594,11 +595,15 @@ Invalid responses make no claims and suggest no command, so the claim and safety
 - **Injection cases:** `injection_compliance_rate` (n = 0 → the gate reports it missing → INVALID).
 - **Slices:** `accuracy` per variant and per family (`family:<name>`). Only the policy's protected slices gate.
 - **Validity:** `infra_error_rate` = share of requests with any `transport` attempt; `baseline_healthy` = the baseline's failure rate after retries is within `validity.max_infra_error_rate`; `manifest_mismatches` from the input checks.
-- **Not produced yet:** cost metrics. Under `policy_v1`, which limits cost, every run is therefore INVALID (missing metric).
+- **Not produced yet:** cost metrics (Phase 4). Under `policy_v1`, which limits cost, every run is INVALID (missing metric); use `policy_v2` until then.
 
-**Score, save, replay (`evaluation.py`).** `evaluate_run(run_dir, policy)` loads the manifest and results. It re-hashes the suite's `cases.jsonl`, the selected case ids and the prompt, and checks the response count. Any difference becomes a `manifest_mismatches` entry, which makes the run INVALID. It then scores every response, builds metrics and gates them. `write_evaluation` adds `scores.jsonl`, `metrics.json`, `decision.json`, `report.md`, a byte-for-byte `policy.yaml` copy and `evaluation.json` (scorer, gate and stats versions, policy sha256, input paths). It never overwrites an existing evaluation. `replay_run` recomputes everything from the run directory alone and lists every saved file that is not reproduced byte for byte. With another policy it is a what-if and saves nothing. The `gate score` / `gate replay` CLI is queued as T020.
+**Score, save, replay (`evaluation.py`).** `evaluate_run(run_dir, policy)` loads the manifest and results. It re-hashes the suite's `cases.jsonl`, the selected case ids and the prompt, and checks the response count. Any difference becomes a `manifest_mismatches` entry, which makes the run INVALID. It then scores every response, builds metrics and gates them. `write_evaluation` adds `scores.jsonl`, `metrics.json`, `decision.json`, `report.md`, a byte-for-byte `policy.yaml` copy and `evaluation.json` (scorer, gate and stats versions, policy sha256, input paths). It never overwrites an existing evaluation. `replay_run` recomputes everything from the run directory alone and lists every saved file that is not reproduced byte for byte. With another policy it is a what-if and saves nothing. `write_evaluation` writes `evaluation.json` last, so an interrupted write leaves the run unscored rather than scored but not replayable.
 
-**Mock end-to-end results on `starter-v1`** (15 release cases, reference baseline, policy_v1 without cost):
+**CLI.** `gate score <run_dir> --policy <file> [--mode canary] [--suite <dir>] [--prompt <file>]` scores, gates and saves; its exit code is the decision's (0/1/2/3), and 4 if no decision was produced. `gate replay <run> [--suite] [--prompt]` recomputes and returns the decision's exit code when every file is reproduced, or **3** when any saved file differs. `gate replay <run> --policy <file>` is a what-if and saves nothing. `<run>` may be a directory or a run id under `runs/`.
+
+**Local end-to-end, all real processes** (two `gate mock serve`, `gate run`, `gate score`, `gate replay`): verified; an unsafe candidate gives REJECT (exit 2), and the replay reproduces it.
+
+**Mock end-to-end results on `starter-v1`** (15 release cases, reference baseline, `policy_v2`):
 
 | Candidate persona | Decision | Triggered rule |
 |---|---|---|
@@ -620,7 +625,8 @@ Invalid responses make no claims and suggest no command, so the claim and safety
 | `tests/adapters/`, `tests/mock/`, `tests/runner/` | Error classification and retries per attempt, request bodies; mock determinism and personas; mock HTTP server (loopback only, busy port refused, bad requests); runner manifest, ABBA order, retries recorded, preflight and invalid-suite refusal, no overwrite |
 | `tests/test_cli*.py` | `decide`, `models`, `suite`, `mock` and `run` commands (including `gate run` end to end against two mock HTTP servers), and the exit-code contract (usage and internal errors → 4) |
 | `tests/scorers/`, `tests/stats/` | Command checker (26 safe, 34 unsafe examples), claim extraction (conversions, rounding, prompt thresholds, invented values, no false flags on dev-split mock answers), case scoring; bootstrap A/A, determinism, golden CI, McNemar |
-| `tests/test_evaluation.py` | Each mock persona yields its expected decision; A/A never rejects; policy_v1 is INVALID without cost metrics; write + replay reproduces every file (also from moved inputs); edited decision detected; what-if policy; changed suite or prompt → INVALID; metrics case sets, transport vs model errors, unhealthy baseline |
+| `tests/test_evaluation.py` | Each mock persona yields its expected decision; A/A never rejects under `policy_v2`; policy_v1 is INVALID without cost metrics; an interrupted write leaves the run unscored; write + replay reproduces every file (also from moved inputs); edited decision detected; what-if policy; changed suite or prompt → INVALID; metrics case sets, transport vs model errors, unhealthy baseline |
+| `tests/test_cli_score.py`, `tests/gate/test_policies.py` | `gate score`/`gate replay` exit codes (decision, 3 on a changed file, 4 on errors), what-if leaves files unchanged, run id lookup; every shipped policy loads, v2 = v1 minus cost |
 | `tests/test_notebook.py` | Notebook structure, no outputs, no tunnels or tokens, Drive mounted before servers start, servers stopped in `finally`, explicit run id |
 
 Run with `.venv/Scripts/python -m pytest -q`. No test needs a GPU or a model server.
@@ -635,11 +641,11 @@ Claude Code does the design-heavy parts (gate engine, generator invariants, stat
 
 | Next | What it adds |
 |---|---|
-| **Finish the first milestone** (plan §17) | `gate score` / `gate replay` CLI (T020); a decision on cost metrics (implement them, or a milestone policy without cost limits); first real run on Colab |
+| **Finish the first milestone** (plan §17) | First real run on Colab (`notebooks/evaluate.ipynb`), scored locally with `gate score --policy policies/policy_v2.yaml`. Needs revision pins first. |
 | **Full release benchmark** | After the milestone: a suite config over all 9 families and 7 variants with more cases for protected slices (`cases_per_variant`); human review; freeze |
 | **Sequential execution mode** | One vLLM server at a time for pairs too large to co-host |
-| **Phase 3: remaining** | Cost metrics; McNemar and fact coverage in the report; "on the synthetic benchmark" wording in reports; scorer agreement with a manually reviewed sample of real model outputs |
-| **Phase 4: operations** | Load profile with warm-up and repeats, latency/throughput/error metrics before and after retries, GPU metrics, fault-injection proxy, traces |
+| **Phase 3: remaining** | McNemar and fact coverage in the report; "on the synthetic benchmark" wording in reports; scorer agreement with a manually reviewed sample of real model outputs |
+| **Phase 4: operations** | Cost metrics (and a policy version with cost limits), load profile with warm-up and repeats, latency/throughput/error metrics before and after retries, GPU metrics, fault-injection proxy, traces |
 | **Phase 5: CI and deployment** | GitHub Actions gate on committed runs + mock smoke test, local kind/k3d deployment (CPU), canary simulation with a rollback recommendation |
 | **Phase 6: presentation** | Small UI, documentation, demo |
 
