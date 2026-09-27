@@ -137,7 +137,7 @@ gate decide / gate replay on saved runs  <--  copy runs/<run_id>/ via Google Dri
 - A real evaluation is a **batch job**: connect, serve, run, save, disconnect. The GPU is never used for development.
 - The runner runs **inside the notebook** and calls `localhost`. No tunnels, which would add network latency to the latency measurements.
 - Baseline and candidate share **one session and one GPU**, so their latencies are comparable. With FP8 weights (about 9 GB per 8B model) both fit on a 40 GB A100 at once (**concurrent** mode). Larger pairs run one after the other (**sequential** mode), with the order recorded and alternated. `registry.fits_concurrently` chooses the mode.
-- Current pair: `ministral-3-8b-instruct-fp8` (baseline, ungated) vs `qwen3-8b-fp8` (candidate, thinking mode off). `llama-3.1-8b-instruct-fp8` (gated; needs approved access and the Colab secret `HF_TOKEN`) is kept for later runs.
+- Current pair: `llama-3.1-8b-instruct-fp8` (baseline, gated; needs approved Hugging Face access and the Colab secret `HF_TOKEN`) vs `qwen3-8b-fp8` (candidate, thinking mode off). `ministral-3-8b-instruct-fp8` is an ungated alternative baseline.
 
 ## 1.6 Design principles
 
@@ -175,7 +175,7 @@ About 5,200 lines of source code and 345 tests, all passing; ruff lint and forma
 policies/policy_v1.yaml          demo release policy (with cost limits)
 policies/policy_v2.yaml          milestone policy: v1 without cost limits (cost arrives in Phase 4)
 prompts/triage-v1.yaml           versioned prompt (system + user template)
-models/                          model specs (ministral-3-8b-instruct-fp8, qwen3-8b-fp8, llama-3.1-8b-instruct-fp8) + README
+models/                          model specs (llama-3.1-8b-instruct-fp8, qwen3-8b-fp8, ministral-3-8b-instruct-fp8) + README
 suites/configs/starter-v1.yaml   suite recipe
 suites/starter-v1/               generated suite: cases.jsonl, manifest.json, review.json
 docs/examples/                   example decisions and reports (promote, hold_quality, reject_latency)

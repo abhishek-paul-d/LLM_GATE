@@ -68,8 +68,8 @@ def test_shipped_specs_use_fp8_weights_with_bf16_activations(name):
 
 
 PAIRS = [
-    ("ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"),  # the current demo pair
-    ("llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"),
+    ("llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"),  # the demo pair
+    ("ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"),  # ungated alternative baseline
 ]
 
 

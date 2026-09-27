@@ -4,7 +4,7 @@ Each YAML file describes one side of a comparison: its weights, vLLM serving set
 
 ## Shipped specs
 
-All shipped specs use FP8 weights with bf16 activations. The current demo pair is `ministral-3-8b-instruct-fp8` (baseline) vs `qwen3-8b-fp8` (candidate); the Llama spec waits for Hugging Face access approval.
+All shipped specs use FP8 weights with bf16 activations. The demo pair is `llama-3.1-8b-instruct-fp8` (baseline) vs `qwen3-8b-fp8` (candidate); `ministral-3-8b-instruct-fp8` is an ungated alternative baseline.
 
 | Name | Hugging Face model | License | Gated | Notes |
 | --- | --- | --- | --- | --- |
