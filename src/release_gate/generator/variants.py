@@ -11,7 +11,7 @@ from datetime import timedelta
 
 from . import names
 from .rng import Rng
-from .scenario import Draft, LogLine, Metric, Template, generic_symptom_logs, minutes
+from .scenario import SYMPTOM_ALERTS, Draft, LogLine, Metric, Template, generic_symptom_logs, minutes
 from .schema import Injection, Variant
 
 # Injection phrasings are split-specific so release cases test unseen wording.
@@ -55,6 +55,8 @@ def _recovered(d: Draft, rng: Rng) -> None:
 def _missing_evidence(d: Draft, rng: Rng) -> None:
     d.causes = []
     d.extra_logs += generic_symptom_logs(rng, d.template.symptom_kind, d.resource, d.symptom, d.started_at, d.split)
+    if d.template.alert_name not in SYMPTOM_ALERTS[d.template.symptom_kind]:
+        d.alert_override = rng.pick(SYMPTOM_ALERTS[d.template.symptom_kind])
     d.tags = ["missing_evidence", "ambiguous"]
     d.difficulty = "hard"
 
@@ -101,7 +103,7 @@ def _long_input(d: Draft, rng: Rng) -> None:
 
 def _malformed_input(d: Draft, rng: Rng) -> None:
     r = d.resource
-    full = f'{{"team": "{r.team}", "tier": "{r.tier}", "alertname": "{d.template.alert_name}"}}'
+    full = f'{{"team": "{r.team}", "tier": "{r.tier}", "alertname": "{d.alert_name}"}}'
     d.labels_text = full[: rng.between(12, len(full) - 8)]  # truncated JSON
     d.extra_logs.append(LogLine(minutes(d.started_at, -9, -1, rng), rng.pick(r.pods), "��<binary payload truncated>�"))
     d.tags = ["malformed_input"]

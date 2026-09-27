@@ -16,6 +16,7 @@ from pydantic import ValidationError
 
 from . import names
 from .build import CASES_FILE, case_sha256, read_cases, read_manifest, read_reviews
+from .scenario import SYMPTOM_ALERTS
 from .schema import SuiteCase
 from .severity import severity_for
 
@@ -90,6 +91,10 @@ def validate_case(c: SuiteCase) -> list[Issue]:
         bad("V05", "recovered flag does not match variant")
     if c.symptom.recovered and ("status: resolved" not in text or c.resolved_at is None):
         bad("V05", "recovered case must render status: resolved with resolved_at")
+    if c.variant == "missing_evidence":
+        alert = text.split("\n", 1)[0].removeprefix("[ALERT] ")
+        if alert not in SYMPTOM_ALERTS[c.symptom.kind]:
+            bad("V05", f"missing_evidence case uses alert {alert!r}, which names a cause; use a symptom-only alert")
     if c.variant not in c.tags:
         bad("V05", f"tags {c.tags} missing variant {c.variant}")
 

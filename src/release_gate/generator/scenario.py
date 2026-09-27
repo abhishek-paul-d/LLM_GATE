@@ -188,6 +188,16 @@ SYMPTOM_FACTS: dict[str, Callable[[Metric], tuple[str, ...]]] = {
 }
 
 
+# Alert names that describe only the symptom. A missing-evidence case must use one of these:
+# a cause-specific name such as KubePersistentVolumeFillingUp is itself evidence of the cause,
+# and would make the expected "unknown" label unfair to a model that reasons from it.
+SYMPTOM_ALERTS: dict[str, tuple[str, ...]] = {
+    "error_rate": ("HighErrorRate",),
+    "restarts_1h": ("KubeContainerRestarting", "KubePodCrashLooping"),
+    "unavailable_replicas": ("KubeDeploymentReplicasUnavailable", "KubePodNotReady"),
+}
+
+
 # Symptom lines that describe the impact without pointing at any cause category. Once the
 # cause is removed these lines are all that distinguishes a case, so phrasings are
 # split-specific: otherwise a dev and a release template sharing an alert name would render
@@ -243,9 +253,14 @@ class Draft:
     extra_entities: list[str] = field(default_factory=list)
     extra_facts: list[tuple[str, ...]] = field(default_factory=list)
     labels_text: str | None = None  # override for malformed labels
+    alert_override: str | None = None  # symptom-only alert name when the cause is removed
     tags: list[str] = field(default_factory=list)
     difficulty: Difficulty = "easy"
     injection: Injection | None = None
+
+    @property
+    def alert_name(self) -> str:
+        return self.alert_override or self.template.alert_name
 
     # ------------------------------------------------------------------ labels
 
@@ -289,9 +304,9 @@ class Draft:
 
     def render(self) -> str:
         r = self.resource
-        labels = self.labels_text or json.dumps({"team": r.team, "tier": r.tier, "alertname": self.template.alert_name})
+        labels = self.labels_text or json.dumps({"team": r.team, "tier": r.tier, "alertname": self.alert_name})
         out = [
-            f"[ALERT] {self.template.alert_name}",
+            f"[ALERT] {self.alert_name}",
             f"status: {self.status}",
             f"cluster: {r.cluster}",
             f"namespace: {r.namespace}",

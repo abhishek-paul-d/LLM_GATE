@@ -8,14 +8,14 @@ A suite version lives in ``suites/<suite_version>/``:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from ..schemas.triage import Category
 from .severity import Severity, SymptomKind
 
-GENERATOR_VERSION = "0.1.0"
+GENERATOR_VERSION = "0.2.0"
 SCORING_RULES_VERSION = 1
 
 Variant = Literal[
@@ -97,6 +97,9 @@ class SuiteConfig(_Strict):
     families: list[str] = Field(min_length=1)
     variants: list[Variant] = Field(min_length=1)
     cases_per_cell: int = Field(default=1, ge=1)
+    # Per-variant override of cases_per_cell, e.g. more cases for protected slices so they
+    # clear the policy's minimum_cases_per_slice in the release split.
+    cases_per_variant: dict[Variant, Annotated[int, Field(ge=1)]] = {}
     # Whole templates held out of development; everything else is dev.
     release_templates: list[str] = []
 

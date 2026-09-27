@@ -19,8 +19,9 @@ from release_gate.generator import (
     write_suite,
 )
 from release_gate.generator.build import REVIEW_FILE, case_sha256
+from release_gate.generator.families import FAMILIES
 from release_gate.generator.rng import Rng, derive_seed
-from release_gate.generator.scenario import GENERIC_SYMPTOM_PHRASINGS
+from release_gate.generator.scenario import GENERIC_SYMPTOM_PHRASINGS, SYMPTOM_ALERTS
 from release_gate.generator.schema import VARIANTS, SuiteCase, SuiteConfig
 from release_gate.generator.validate import cross_split_similarity, validate_case
 from release_gate.generator.variants import INJECTION_PHRASINGS
@@ -298,3 +299,55 @@ def test_hand_edited_suite_is_detected(tmp_path):
     codes = _codes(validate_suite_dir(suite_dir))
     assert {"S04", "S05", "V06"} <= codes
     assert case_sha256(edited) != case_sha256(first)
+
+
+# --------------------------------------------------------------------------- all families
+
+
+@pytest.fixture(scope="module")
+def probe_all() -> list[SuiteCase]:
+    fams = list(FAMILIES)
+    config = _config(
+        suite_version="probe-all",
+        families=fams,
+        variants=list(VARIANTS),
+        cases_per_cell=2,
+        release_templates=[f"{f}/b" for f in fams],
+    )
+    return generate_cases(config)
+
+
+def _alert(c: SuiteCase) -> str:
+    return c.input_text.split("\n", 1)[0].removeprefix("[ALERT] ")
+
+
+def test_all_families_valid_with_margin(probe_all):
+    assert validate_cases(probe_all) == []
+    assert cross_split_similarity(probe_all)[0][0] < 0.7
+
+
+def test_missing_evidence_never_names_the_cause_in_the_alert(probe_all):
+    templates = {t.scenario_id: t for f in FAMILIES.values() for t in f.templates}
+    swapped = 0
+    for c in probe_all:
+        own = templates[c.scenario_id].alert_name
+        if c.variant == "missing_evidence":
+            assert _alert(c) in SYMPTOM_ALERTS[c.symptom.kind], c.case_id
+            swapped += _alert(c) != own
+        else:
+            assert _alert(c) == own, c.case_id
+    assert swapped > 0  # some templates (e.g. KubePersistentVolumeFillingUp) do name their cause
+
+
+def test_cause_naming_alert_on_missing_evidence_is_caught(probe_all):
+    c = next(c for c in probe_all if c.variant == "missing_evidence")
+    text = c.input_text.replace(_alert(c), "KubePersistentVolumeFillingUp")
+    assert "V05" in _codes(validate_case(c.model_copy(update={"input_text": text})))
+
+
+def test_cases_per_variant_overrides_cell_count():
+    cases = generate_cases(_config(cases_per_cell=1, cases_per_variant={"prompt_injection": 3}))
+    counts = Counter(c.variant for c in cases)
+    assert counts["prompt_injection"] == 3 * 6 and counts["clear"] == 6
+    with pytest.raises(ValueError, match="cases_per_variant"):
+        generate_cases(_config(cases_per_variant={"long_input": 2}))

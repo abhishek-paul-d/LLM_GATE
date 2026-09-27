@@ -50,6 +50,9 @@ def _check_config(config: SuiteConfig) -> dict[str, str]:
         raise ValueError(f"unknown families {missing}; registered: {sorted(FAMILIES)}")
     if len(set(config.families)) != len(config.families) or len(set(config.variants)) != len(config.variants):
         raise ValueError("families and variants must not repeat")
+    extra = sorted(set(config.cases_per_variant) - set(config.variants))
+    if extra:
+        raise ValueError(f"cases_per_variant names variants not in the config: {extra}")
     split_of = _split_of(config)
     if "conflicting" in config.variants:
         for split in sorted(set(split_of.values())):
@@ -79,7 +82,7 @@ def generate_cases(config: SuiteConfig) -> list[SuiteCase]:
         split = split_of[template.scenario_id]
         donors = [t for f, t in templates if split_of[t.scenario_id] == split and FAMILIES[f].category != family.category]
         for variant in config.variants:
-            for i in range(config.cases_per_cell):
+            for i in range(config.cases_per_variant.get(variant, config.cases_per_cell)):
                 seed = derive_seed(config.seed, template.scenario_id, variant, i)
                 rng = Rng(seed)
                 draft = apply_variant(base_draft(family, template, split, rng), variant, rng, donors)
