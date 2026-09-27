@@ -1,0 +1,55 @@
+# Release report: {{ run_id }}
+
+**Recommendation: {{ outcome }}**
+
+{{ reason }}
+
+## Run
+
+| Field | Value |
+| --- | --- |
+{% for field, value in run_fields %}
+| {{ field }} | {{ value }} |
+{% endfor %}
+
+## Triggered rules
+{% if triggered_rules %}
+{% for rule in triggered_rules %}
+- {{ rule.rule_id }}: {{ rule.message }}
+{% endfor %}
+{% else %}
+None.
+{% endif %}
+
+## All rules
+
+A rule passes when Observed meets the Limit condition; for `ci` evidence the whole CI must meet it. Drop rules report the paired delta (candidate - baseline) and regression rules report the percent change, so their Limit is the policy value restated in those units.
+
+| Status | Rule | Limit | Observed | CI | n | Evidence |
+| --- | --- | ---: | ---: | --- | ---: | --- |
+{% for rule in rules %}
+| {{ rule.status }} | {{ rule.rule_id }} | {{ rule.limit }} | {{ rule.observed }} | {{ rule.ci }} | {{ rule.n }} | {{ rule.evidence }} |
+{% endfor %}
+
+## Metrics
+{% for section in sections %}
+### {{ section.name }}
+
+| Metric | Baseline | Candidate | Delta | Delta CI | n |
+| --- | ---: | ---: | ---: | --- | ---: |
+{% for row in section.rows %}
+| {{ row.name }} | {{ row.baseline }} | {{ row.candidate }} | {{ row.delta }} | {{ row.delta_ci }} | {{ row.n }} |
+{% endfor %}
+{% endfor %}
+
+## Slices
+
+| Slice | Protected | Baseline | Candidate | Delta | Delta CI | n |
+| --- | --- | ---: | ---: | ---: | --- | ---: |
+{% for row in slices %}
+| {{ row.name }} | {{ row.protected }} | {{ row.baseline }} | {{ row.candidate }} | {{ row.delta }} | {{ row.delta_ci }} | {{ row.n }} |
+{% endfor %}
+
+## Limitations
+
+Results were measured on a versioned synthetic benchmark. They describe behaviour on that benchmark only and do not prove production quality or safety. Absolute limits compare the candidate's point estimate; comparative limits use the paired confidence interval of (candidate - baseline).

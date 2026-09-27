@@ -1,0 +1,123 @@
+{
+  "_readme": "Simple tasks queued for a lighter model. Claude Code handles complex work only and adds simple tasks here instead of doing them. Each prompt is self-contained: the other model has no conversation context. After a task is done, set status to 'done' and ask Claude to review it if review_by_claude is true.",
+  "_fields": {
+    "id": "Unique task id, T001, T002, ...",
+    "file": "Path of the file to create or edit, relative to the repo root",
+    "prompt": "Full self-contained instructions for the simpler model",
+    "context_files": "Files the simpler model should read before starting",
+    "depends_on": "Task ids that must be done first",
+    "review_by_claude": "true if Claude should check the result before it is relied on",
+    "status": "pending | done | reviewed"
+  },
+  "_shared_conventions": "Repo root is D:/llm-release-gate (Windows 11). Python 3.11, pydantic v2. Source lives under src/release_gate/ (src layout). A virtualenv exists at .venv; run tests with `.venv/Scripts/python -m pytest -q` from the repo root and make sure ALL tests pass, including the existing 53 in tests/gate/. Do NOT modify anything under src/release_gate/gate/, policies/, or tests/gate/ - that code is owned by another engineer. Do not add dependencies beyond those named in the task. Use pathlib, UTF-8 file I/O, and type hints. Match the style of src/release_gate/gate/engine.py.",
+  "tasks": [
+    {
+      "id": "T001",
+      "file": "pyproject.toml",
+      "prompt": "Create pyproject.toml at the repo root for a Python package named `llm-release-gate` (import name `release_gate`, src layout: package at src/release_gate/). Use the hatchling build backend. requires-python = \">=3.11\". Version 0.1.0. Runtime dependencies: \"pydantic>=2.7,<3\", \"pyyaml>=6\", \"jinja2>=3.1\". Optional dependency group `dev`: \"pytest>=8\", \"ruff>=0.5\". Console script: `gate = \"release_gate.cli:main\"` (the module will be created later; that is fine). Add [tool.pytest.ini_options] with testpaths = [\"tests\"] and pythonpath = [\"src\"]. Add [tool.ruff] with line-length = 130 and target-version = \"py311\", and [tool.ruff.lint] select = [\"E\", \"F\", \"I\", \"UP\", \"B\"]. Configure hatch so the wheel includes packages = [\"src/release_gate\"]. Then run `.venv/Scripts/python -m pip install -e \".[dev]\"` and confirm `.venv/Scripts/python -m pytest -q` still passes (53 tests). Do not delete tests/conftest.py.",
+      "context_files": [
+        "CLAUDE.md",
+        "tests/conftest.py"
+      ],
+      "depends_on": [],
+      "review_by_claude": false,
+      "status": "reviewed"
+    },
+    {
+      "id": "T002",
+      "file": ".gitignore",
+      "prompt": "Create a .gitignore at the repo root for a Python project on Windows. Ignore: .venv/, __pycache__/, *.py[cod], *.egg-info/, build/, dist/, .pytest_cache/, .ruff_cache/, .mypy_cache/, .coverage, htmlcov/, .env, .env.*, .idea/, .vscode/, Thumbs.db, desktop.ini, .DS_Store. Also ignore run outputs that stay local: everything under runs/ EXCEPT runs/demo/ (curated demo runs are committed), using the two lines `runs/*` and `!runs/demo/`; and *.sqlite, *.sqlite3, *.db. Also ignore Jupyter checkpoints: .ipynb_checkpoints/. Do NOT ignore: policies/, suites/, prompts/, models/, notebooks/, runs/demo/, tests/fixtures/, docs/, delegated_tasks.json, memory.md, CLAUDE.md, plan.md. Add a short comment above each group.",
+      "context_files": [
+        "CLAUDE.md"
+      ],
+      "depends_on": [],
+      "review_by_claude": false,
+      "status": "reviewed",
+      "review_notes": "Claude fixed: used runs/ instead of runs/* + !runs/demo/, and missed .ipynb_checkpoints/ (prompt was updated after the task started)."
+    },
+    {
+      "id": "T003",
+      "file": "src/release_gate/schemas/triage.py",
+      "prompt": "Create the output schema for the demo workload: the JSON record a model must return when it triages a synthetic operational alert.\n\n1. Create src/release_gate/schemas/__init__.py that re-exports TriageRecord, Category, Severity, and parse_triage_record.\n2. Create src/release_gate/schemas/triage.py containing:\n   - `Category = Literal[\"capacity\", \"configuration\", \"dependency\", \"unknown\"]`\n   - `Severity = Literal[\"low\", \"medium\", \"high\"]`\n   - `class TriageRecord(BaseModel)` with model_config = ConfigDict(extra=\"forbid\", frozen=True, str_strip_whitespace=True) and fields: `category: Category`, `severity: Severity`, `summary: str` (min_length=1, max_length=400), `next_check: str` (min_length=1, max_length=200). Give the class a one-line docstring: \"Structured triage of one synthetic alert, as returned by the model under test.\"\n   - `def parse_triage_record(raw: str) -> TriageRecord`: parse a raw model response string with `TriageRecord.model_validate_json(raw)`. It must NOT try to repair, strip markdown fences, or extract JSON from surrounding prose; malformed output must raise pydantic.ValidationError, because schema validity is a measured metric. Include a docstring saying that.\n   - `def triage_json_schema() -> dict`: return TriageRecord.model_json_schema().\n3. Create tests/schemas/test_triage.py (pytest) covering: a valid record parses; each invalid category/severity value is rejected; an unknown extra field is rejected; empty summary rejected; summary of 401 chars rejected; next_check of 201 chars rejected; leading/trailing whitespace is stripped; a response wrapped in ```json fences is rejected; a response with prose before the JSON is rejected; non-JSON text is rejected; triage_json_schema() returns a dict whose 'properties' keys are exactly {category, severity, summary, next_check}.\nRun all tests and make sure they pass.",
+      "context_files": [
+        "plan.md",
+        "CLAUDE.md",
+        "src/release_gate/gate/models.py"
+      ],
+      "depends_on": [],
+      "review_by_claude": false,
+      "status": "reviewed"
+    },
+    {
+      "id": "T004",
+      "file": "src/release_gate/report/markdown.py",
+      "prompt": "Create a Markdown release-report renderer. Read src/release_gate/gate/models.py first: it defines Decision, RuleResult, Status, Outcome, RunMetrics and Comparison. Do not modify it.\n\n1. Create src/release_gate/report/__init__.py re-exporting render_markdown.\n2. Create src/release_gate/report/templates/report.md.j2 (a Jinja2 template) and src/release_gate/report/markdown.py with `def render_markdown(decision: Decision, metrics: RunMetrics) -> str`. Load the template with jinja2.Environment(loader=PackageLoader(\"release_gate.report\", \"templates\"), undefined=StrictUndefined, autoescape=False, trim_blocks=True, lstrip_blocks=True, keep_trailing_newline=True). The output must be deterministic: same inputs give byte-identical output (no timestamps, iterate dicts in sorted key order where order is not already defined by decision.rules).\n\nReport layout, in this order:\n  a. `# Release report: <run_id>`\n  b. A line `**Recommendation: <OUTCOME>**` followed by the decision.reason on the next paragraph.\n  c. `## Run` - a two-column table (Field | Value) with: Run ID, Mode, Policy version, Gate version, Stats method, Confidence level, Bootstrap resamples, Bootstrap seed.\n  d. `## Triggered rules` - bullet list of decision.triggered_rules with each rule's message; if empty write `None.`\n  e. `## All rules` - table with columns: Status | Rule | Limit | Observed | CI | n | Evidence. One row per item in decision.rules, in the given order. Status shown in upper case. Format numbers with the Python format spec `.4g`; show `-` for None; show CI as `[low, high]` each with `.4g`.\n  f. `## Metrics` - one table per section (quality, safety, serving, cost) that is non-empty in metrics, columns: Metric | Baseline | Candidate | Delta | Delta CI | n. Delta = candidate - baseline. Rows sorted by metric name.\n  g. `## Slices` - table with columns: Slice | Protected | Baseline | Candidate | Delta | Delta CI | n, one row per slice in metrics.slices that has an `accuracy` entry, sorted by slice name. Protected is `yes` when a rule with rule_id `slice.<name>.accuracy_drop` exists in decision.rules, else `no`.\n  h. `## Limitations` - this exact paragraph: `Results were measured on a versioned synthetic benchmark. They describe behaviour on that benchmark only and do not prove production quality or safety. Absolute limits compare the candidate's point estimate; comparative limits use the paired confidence interval of (candidate - baseline).`\n\n3. Create tests/report/test_markdown.py (pytest). Build inputs by loading tests/fixtures/gate/pass_metrics.json with RunMetrics.model_validate_json, policies/policy_v1.yaml with release_gate.gate.load_policy, and calling release_gate.gate.evaluate. Test: output starts with `# Release report: fixture-pass`; contains `**Recommendation: PROMOTE**`; contains every rule_id from decision.rules; contains the Limitations paragraph; the long_input slice row says `no` and prompt_injection says `yes`; rendering twice gives identical strings; a REJECT case (set serving.error_rate.candidate to 0.03 in the loaded JSON dict before validating) shows `**Recommendation: REJECT**` and lists `serving.error_rate` under Triggered rules.\nRequires jinja2 (added to pyproject.toml by task T001; if it is not installed, run `.venv/Scripts/python -m pip install \"jinja2>=3.1\"`). Run all tests.",
+      "context_files": [
+        "src/release_gate/gate/models.py",
+        "src/release_gate/gate/engine.py",
+        "tests/fixtures/gate/pass_metrics.json",
+        "policies/policy_v1.yaml",
+        "CLAUDE.md"
+      ],
+      "depends_on": [
+        "T001"
+      ],
+      "review_by_claude": true,
+      "status": "reviewed",
+      "review_notes": "Claude fixed: Limit column now shows condition and unit; paired with engine v0.2.0 unit-consistent RuleResult."
+    },
+    {
+      "id": "T005",
+      "file": "src/release_gate/cli.py",
+      "prompt": "Create the command-line entry point src/release_gate/cli.py using only argparse from the standard library. The console script `gate` (declared in pyproject.toml) points to `release_gate.cli:main`.\n\nImplement `def main(argv: list[str] | None = None) -> int` with one subcommand for now:\n\n  gate decide --metrics PATH --policy PATH [--out PATH] [--report PATH]\n\nBehaviour:\n  1. Load metrics with release_gate.gate.load_metrics(path) and policy with release_gate.gate.load_policy(path).\n  2. decision = release_gate.gate.evaluate(metrics, policy).\n  3. Decision JSON = decision.model_dump_json(indent=2) + \"\\n\". Write it to --out (UTF-8, create parent dirs) if given, else print it to stdout.\n  4. If --report is given, write release_gate.report.render_markdown(decision, metrics) to that path (UTF-8, create parent dirs).\n  5. Print one summary line to stderr: `<OUTCOME> (exit <code>): <decision.reason>`.\n  6. Return decision.exit_code.\n\nEXIT CODES ARE A CONTRACT used by CI: 0 PROMOTE, 1 HOLD, 2 REJECT or ROLLBACK, 3 INVALID (these come from decision.exit_code). Input and usage errors must use exit code 4 and never 2. IMPORTANT: argparse's default ArgumentParser.error() exits with code 2, which would be confused with REJECT. Subclass ArgumentParser and override error() to print usage plus the message to stderr and raise SystemExit(4). Also catch FileNotFoundError, yaml.YAMLError, and pydantic.ValidationError while loading inputs: print `error: <message>` to stderr and return 4. Define a module constant `EXIT_USAGE = 4`.\n\nEnd the file with:\nif __name__ == \"__main__\":\n    raise SystemExit(main())\n\nCreate tests/test_cli.py (pytest, use tmp_path and capsys; call main([...]) directly, and use pytest.raises(SystemExit) for argparse errors) covering: the pass fixture (tests/fixtures/gate/pass_metrics.json with policies/policy_v1.yaml) returns 0 and --out writes JSON whose \"outcome\" is \"PROMOTE\"; a copy of the fixture with serving.error_rate.candidate = 0.03 returns 2; a copy with validity.baseline_healthy = false returns 3; a copy with slices.prompt_injection.accuracy.n = 5 returns 1; a missing metrics file returns 4; a policy file containing an unknown field returns 4; a missing required argument raises SystemExit with code 4; unknown subcommand raises SystemExit with code 4; --report writes a file containing `Recommendation`. Run all tests.",
+      "context_files": [
+        "src/release_gate/gate/__init__.py",
+        "src/release_gate/gate/models.py",
+        "src/release_gate/report/markdown.py",
+        "tests/fixtures/gate/pass_metrics.json",
+        "policies/policy_v1.yaml",
+        "CLAUDE.md"
+      ],
+      "depends_on": [
+        "T001",
+        "T004"
+      ],
+      "review_by_claude": true,
+      "status": "reviewed",
+      "review_notes": "Claude fixed: unexpected exceptions escaped main() and exited 1 (= HOLD); now exit 4. OSError caught instead of only FileNotFoundError."
+    },
+    {
+      "id": "T006",
+      "file": "docs/examples/",
+      "prompt": "Generate example release reports for the three demo outcomes using the existing CLI. Do not write any Python code in src/.\n\n1. Create tests/fixtures/gate/hold_quality_metrics.json: copy tests/fixtures/gate/pass_metrics.json exactly, then change only: run_id -> \"example-hold-quality\"; quality.accuracy -> {\"baseline\": 0.86, \"candidate\": 0.85, \"n\": 300, \"delta_ci\": [-0.045, 0.025]}.\n2. Create tests/fixtures/gate/reject_latency_metrics.json: copy pass_metrics.json exactly, then change only: run_id -> \"example-reject-latency\"; serving.p95_latency_ms -> {\"baseline\": 1500, \"candidate\": 3000, \"n\": 300, \"delta_ci\": [1300, 1700]}.\n3. Create tests/fixtures/gate/promote_metrics.json: copy pass_metrics.json exactly, then change only run_id -> \"example-promote\".\n4. For each of the three files run (from the repo root):\n   .venv/Scripts/gate decide --metrics tests/fixtures/gate/<name>_metrics.json --policy policies/policy_v1.yaml --out docs/examples/<name>.decision.json --report docs/examples/<name>.report.md\n   Expected exit codes: promote 0, hold_quality 1, reject_latency 2. If an exit code differs, STOP and report it instead of changing numbers.\n5. Create docs/examples/README.md with a short table: Example | Outcome | What changed vs. the passing run | Files. Explain in one sentence each: hold_quality = accuracy CI straddles the 2-point non-inferiority margin, so the evidence is inconclusive; reject_latency = p95 latency doubles, still under the 4000 ms absolute ceiling but far beyond the 25% relative-regression limit (the example from plan.md section 6).",
+      "context_files": [
+        "tests/fixtures/gate/pass_metrics.json",
+        "policies/policy_v1.yaml",
+        "plan.md"
+      ],
+      "depends_on": [
+        "T005"
+      ],
+      "review_by_claude": true,
+      "status": "reviewed",
+      "review_notes": "Regenerated by Claude after engine v0.2.0."
+    },
+    {
+      "id": "T007",
+      "file": "README.md",
+      "prompt": "Write README.md for the repository. Read plan.md and CLAUDE.md first. Keep it under 150 lines, plain and factual, no marketing language, no emojis, no badges.\n\nSections:\n1. `# LLM Release Gate` + two-sentence description: compares a candidate LLM configuration against the approved baseline on a frozen synthetic benchmark and load profile, then returns a rule-based PROMOTE / HOLD / REJECT / ROLLBACK / INVALID recommendation with the evidence behind it.\n2. `## Status` - Phase 0 of plan.md: the gate engine, policy file and fixture tests exist; the synthetic generator, evaluation runner, scorers, statistics and load tests are not built yet.\n3. `## How the gate decides` - the precedence table from plan.md section 8 (INVALID > REJECT/ROLLBACK > HOLD > PROMOTE) and two bullets explaining absolute limits (candidate point estimate) vs comparative limits (paired confidence interval of candidate minus baseline; inconclusive leads to HOLD).\n4. `## Exit codes` - table: 0 PROMOTE, 1 HOLD, 2 REJECT/ROLLBACK, 3 INVALID, 4 input or usage error.\n5. `## Quick start` - Windows PowerShell commands: create venv (`python -m venv .venv`), install (`.venv\\Scripts\\python -m pip install -e \".[dev]\"`), run tests (`.venv\\Scripts\\python -m pytest -q`), and run the gate on the fixture (`.venv\\Scripts\\gate decide --metrics tests/fixtures/gate/pass_metrics.json --policy policies/policy_v1.yaml --report runs/example.report.md`).\n6. `## Repository layout` - short tree of what exists now (policies/, src/release_gate/gate, src/release_gate/report, src/release_gate/schemas, src/release_gate/cli.py, tests/, docs/examples/, plan.md, CLAUDE.md).\n7. `## Scope and limitations` - synthetic data only; results describe the synthetic benchmark, not production quality; rollback is a recommendation, never automatic.\nLink to plan.md for the full design and to docs/examples/README.md for sample reports. Only document commands that actually exist; do not invent features.",
+      "context_files": [
+        "plan.md",
+        "CLAUDE.md",
+        "policies/policy_v1.yaml",
+        "docs/examples/README.md"
+      ],
+      "depends_on": [
+        "T005",
+        "T006"
+      ],
+      "review_by_claude": false,
+      "status": "reviewed"
+    }
+  ]
+}
