@@ -31,33 +31,33 @@
   },
   "bad_config_rollout-b-clear-000": {
     "case_sha256": "2f4a5949fb14271dcb75d41fd8291e7fd50968aa5dc8630c3f4641b66834623c",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "bad_config_rollout-b-conflicting-000": {
     "case_sha256": "4c38b88140b3976ff5770b0d465b5912dee57acab90412017dc08aadd6fc599a",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "bad_config_rollout-b-missing_evidence-000": {
     "case_sha256": "ab9b765c98f9be38f18ced17321afed24450ccf1d5053a041eb82d9f80d0f986",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "bad_config_rollout-b-prompt_injection-000": {
     "case_sha256": "9350c6cc99100d77cd5494a6157f2fea39e07ef5936982829ea4ffd58801a0b2",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "bad_config_rollout-b-recovered-000": {
     "case_sha256": "98627dc9fda1371c5cf8bc30c9723fd62314f785868c59c0fd63c9dcfe0bbe4a",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "memory_pressure-a-clear-000": {
     "case_sha256": "f3e087e24cb87478076558b81b326a8aa383609210b7387ef5c40fff6cc30b95",
@@ -91,33 +91,33 @@
   },
   "memory_pressure-b-clear-000": {
     "case_sha256": "308b1dd52f861b09ac5a75f8f40b735daee65bc69e3b7a3fa7e2bed99820c65e",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "memory_pressure-b-conflicting-000": {
     "case_sha256": "10f64b61af02ab7eba5fdb6b1933741fcc00df84900464969671deee962c0053",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "memory_pressure-b-missing_evidence-000": {
     "case_sha256": "e42560b283ef39f9e7d0a1755a0bc769ea7375c7e16ff3079c3a973760e5ab90",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "memory_pressure-b-prompt_injection-000": {
     "case_sha256": "bc580ad40dade1262783bd3232619355e3b8ee0d71ef7fa2c02145af02c9b771",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "memory_pressure-b-recovered-000": {
     "case_sha256": "18785f3bdca75bd2b11357aca77efd198ade19f5d4fcdf3f9ddb2ea7f2b2ff28",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "upstream_dependency-a-clear-000": {
     "case_sha256": "9bd68907ed1c2efb67ba9ef217a6e3086f57fbcf6ec9b100e19bd968abb52722",
@@ -151,32 +151,32 @@
   },
   "upstream_dependency-b-clear-000": {
     "case_sha256": "1cd753b75629b854369e632f7911f1e5e5c8360e3a9710edfc16246c90ff950f",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "upstream_dependency-b-conflicting-000": {
     "case_sha256": "c649512f1312ee5dff85cc5e40a09b377132ee2a520578170ec72229d6ecbcee",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "upstream_dependency-b-missing_evidence-000": {
     "case_sha256": "cb972e50366de79fd9d0224bfe76d7fa1dbc7e447193f3c8f94f318f25c1032f",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "upstream_dependency-b-prompt_injection-000": {
     "case_sha256": "f2207c62aa47d70c3744294a56efed52d32150daa77680914b266a9bda717520",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   },
   "upstream_dependency-b-recovered-000": {
     "case_sha256": "401ccedf1a4fab65614e6a01ffab47f0f542b9676d39a217df6619d066b6b98c",
-    "notes": "",
-    "reviewer": null,
-    "status": "candidate"
+    "notes": "Human review by the user (2026-09-28); recorded by Claude on the reviewer's instruction without reading the case.",
+    "reviewer": "abhishek-paul-d",
+    "status": "approved"
   }
 }
