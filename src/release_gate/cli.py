@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import shlex
 import sys
 from pathlib import Path
 
 import yaml
 from pydantic import ValidationError
 
+from release_gate import registry
 from release_gate.gate import evaluate, load_metrics, load_policy
 from release_gate.report import render_markdown
 
@@ -39,7 +41,22 @@ def main(argv: list[str] | None = None) -> int:
     decide_parser.add_argument("--out", help="write decision JSON to this path")
     decide_parser.add_argument("--report", help="write a Markdown report to this path")
 
+    models_parser = subparsers.add_parser("models", help="inspect registered model specs")
+    models_subparsers = models_parser.add_subparsers(dest="models_command", required=True, parser_class=ExitUsageArgumentParser)
+    models_list_parser = models_subparsers.add_parser("list", help="list model specs")
+    models_show_parser = models_subparsers.add_parser("show", help="show one model spec as JSON")
+    models_show_parser.add_argument("name_or_path", metavar="NAME_OR_PATH")
+    models_serve_parser = models_subparsers.add_parser("serve-cmd", help="print a vLLM serve command")
+    models_serve_parser.add_argument("name_or_path", metavar="NAME_OR_PATH")
+    models_serve_parser.add_argument("--port", type=int, required=True)
+    models_serve_parser.add_argument("--gpu-memory-utilization", type=float)
+    for models_action_parser in (models_list_parser, models_show_parser, models_serve_parser):
+        models_action_parser.add_argument("--models-dir", type=Path, default=registry.DEFAULT_MODELS_DIR)
+
     args = parser.parse_args(argv)
+    if args.command == "models":
+        return _run_models_command(args)
+
     try:
         metrics = load_metrics(args.metrics)
         policy = load_policy(args.policy)
@@ -65,6 +82,34 @@ def main(argv: list[str] | None = None) -> int:
         print(decision_json, end="")
     print(f"{decision.outcome.value} (exit {decision.exit_code}): {decision.reason}", file=sys.stderr)
     return decision.exit_code
+
+
+def _run_models_command(args: argparse.Namespace) -> int:
+    """Load and display model specs without changing the release decision path."""
+    try:
+        if args.models_command == "list":
+            names = registry.list_model_specs(args.models_dir)
+            if not names:
+                print(f"no model specs in {args.models_dir}", file=sys.stderr)
+                return 0
+            for name in names:
+                spec = registry.load_model_spec(name, args.models_dir)
+                pinned = "pinned" if spec.revision_pinned else "unpinned"
+                gated = "gated" if spec.model.gated else "open"
+                print(f"{spec.name}\t{spec.model.id}\t{spec.model.revision}\t{pinned}\t{gated}")
+            return 0
+
+        spec = registry.load_model_spec(args.name_or_path, args.models_dir)
+        if args.models_command == "show":
+            print(spec.model_dump_json(indent=2))
+        else:
+            command = spec.vllm_serve_args(args.port, args.gpu_memory_utilization)
+            print(shlex.join(command))
+        return 0
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        # ValueError also covers pydantic.ValidationError from model spec validation.
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
 
 
 if __name__ == "__main__":

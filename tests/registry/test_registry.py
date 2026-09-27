@@ -82,6 +82,31 @@ def test_unknown_name_lists_available():
         load_model_spec("mistral-7b", MODELS)
 
 
+@pytest.mark.parametrize("content", ["spec_version: 1\n", "[1, 2]\n", "name: [unclosed\n"])
+def test_invalid_spec_error_names_the_file(tmp_path, content):
+    path = tmp_path / "broken.yaml"
+    path.write_text(content, encoding="utf-8")
+    with pytest.raises(ValueError, match="broken.yaml: invalid model spec"):
+        load_model_spec(path)
+
+
+@pytest.mark.parametrize("which", ["missing", "file"])
+def test_models_dir_must_be_a_directory(tmp_path, which):
+    target = tmp_path / "nope"
+    if which == "file":
+        target.write_text("x", encoding="utf-8")
+    with pytest.raises(NotADirectoryError):
+        list_model_specs(target)
+    with pytest.raises(FileNotFoundError, match="missing"):
+        load_model_spec("qwen3-8b-fp8", target)
+
+
+@pytest.mark.parametrize(("port", "util"), [(0, None), (70000, None), (8001, 0.0), (8001, 1.5), (8001, -0.2)])
+def test_serve_args_reject_invalid_overrides(port, util):
+    with pytest.raises(ValueError):
+        load_model_spec("qwen3-8b-fp8", MODELS).vllm_serve_args(port=port, gpu_memory_utilization=util)
+
+
 def test_name_must_match_file(tmp_path):
     path = _write(tmp_path, _spec_doc(), stem="renamed")
     with pytest.raises(ValueError, match="must match the file name"):

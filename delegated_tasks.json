@@ -7,9 +7,9 @@
     "context_files": "Files the simpler model should read before starting",
     "depends_on": "Task ids that must be done first",
     "review_by_claude": "true if Claude should check the result before it is relied on",
-    "status": "pending | done | reviewed"
+    "status": "pending | done (set by the implementing model) | reviewed (set only by Claude)"
   },
-  "_shared_conventions": "Repo root is D:/llm-release-gate (Windows 11). Python 3.11, pydantic v2. Source lives under src/release_gate/ (src layout). A virtualenv exists at .venv; run tests with `.venv/Scripts/python -m pytest -q` from the repo root and make sure ALL tests pass, including the existing 53 in tests/gate/. Do NOT modify anything under src/release_gate/gate/, policies/, or tests/gate/ - that code is owned by another engineer. Do not add dependencies beyond those named in the task. Use pathlib, UTF-8 file I/O, and type hints. Match the style of src/release_gate/gate/engine.py.",
+  "_shared_conventions": "Repo root is D:/llm-release-gate (Windows 11). Python 3.11, pydantic v2. Source lives under src/release_gate/ (src layout). A virtualenv exists at .venv; run tests with `.venv/Scripts/python -m pytest -q` from the repo root and make sure ALL tests pass, including the existing 53 in tests/gate/. Do NOT modify anything under src/release_gate/gate/, policies/, or tests/gate/ - that code is owned by another engineer. Do not add dependencies beyond those named in the task. Use pathlib, UTF-8 file I/O, and type hints. Match the style of src/release_gate/gate/engine.py. When you finish a task set its status to 'done'. NEVER set status to 'reviewed': only Claude sets that, after its own review.",
   "tasks": [
     {
       "id": "T001",
@@ -133,7 +133,8 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed",
+      "review_notes": "Claude review: CLI code correct, tests good. Fixes were in Claude's registry, not T008: serve-cmd overrides are now validated, spec errors name the file, a missing or non-directory --models-dir exits 4. The implementing model had set status to 'reviewed' itself."
     },
     {
       "id": "T009",
@@ -149,7 +150,8 @@
         "T008"
       ],
       "review_by_claude": false,
-      "status": "pending"
+      "status": "reviewed",
+      "review_notes": "Claude review: accurate. Added the FP8 weights_gb rule of thumb (~1.15 GB per billion params)."
     }
   ]
 }

@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 DEFAULT_MODELS_DIR = Path("models")
 
@@ -98,6 +98,11 @@ class ModelSpec(_Strict):
 
     def vllm_serve_args(self, port: int, gpu_memory_utilization: float | None = None) -> list[str]:
         """Arguments for ``vllm serve`` that reproduce this spec. Deterministic order."""
+        # Validate overrides here: vLLM would only reject them on the GPU host, inside a paid session.
+        if not 1 <= port <= 65535:
+            raise ValueError(f"port must be 1-65535, got {port}")
+        if gpu_memory_utilization is not None and not 0.0 < gpu_memory_utilization <= 1.0:
+            raise ValueError(f"gpu_memory_utilization must be in (0, 1], got {gpu_memory_utilization}")
         util = gpu_memory_utilization if gpu_memory_utilization is not None else self.serving.gpu_memory_utilization
         s = self.serving
         args = [
@@ -144,22 +149,29 @@ def _resolve(ref: str | Path, models_dir: Path) -> Path:
 
 
 def list_model_specs(models_dir: str | Path = DEFAULT_MODELS_DIR) -> list[str]:
-    """Names of the specs in ``models_dir``, sorted."""
-    return sorted(p.stem for p in Path(models_dir).glob("*.yaml"))
+    """Names of the specs in ``models_dir``, sorted. A missing directory is an error, not an empty registry."""
+    models_dir = Path(models_dir)
+    if not models_dir.is_dir():
+        raise NotADirectoryError(f"models directory {str(models_dir)!r} does not exist or is not a directory")
+    return sorted(p.stem for p in models_dir.glob("*.yaml"))
 
 
 def load_model_spec(ref: str | Path, models_dir: str | Path = DEFAULT_MODELS_DIR) -> ModelSpec:
     """Load a spec by name (``qwen3-8b-fp8``) or path (``models/qwen3-8b-fp8.yaml``).
 
-    The spec's ``name`` must equal its file stem so a name always means one file.
+    The spec's ``name`` must equal its file stem so a name always means one file. Every
+    parse or validation error names the offending file.
     """
     models_dir = Path(models_dir)
     path = _resolve(ref, models_dir)
     if not path.is_file():
-        available = ", ".join(list_model_specs(models_dir)) or "none"
-        raise FileNotFoundError(f"model spec {ref!r} not found at {path} (available in {models_dir}: {available})")
-    with open(path, encoding="utf-8") as f:
-        spec = ModelSpec.model_validate(yaml.safe_load(f))
+        available = ", ".join(list_model_specs(models_dir)) if models_dir.is_dir() else f"{models_dir} missing"
+        raise FileNotFoundError(f"model spec {ref!r} not found at {path} (available: {available or 'none'})")
+    try:
+        with open(path, encoding="utf-8") as f:
+            spec = ModelSpec.model_validate(yaml.safe_load(f))
+    except (yaml.YAMLError, ValidationError) as exc:
+        raise ValueError(f"{path}: invalid model spec: {exc}") from exc
     if spec.name != path.stem:
         raise ValueError(f"{path}: spec name {spec.name!r} must match the file name {path.stem!r}")
     return spec
