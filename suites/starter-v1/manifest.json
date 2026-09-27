@@ -1,0 +1,64 @@
+{
+  "cases_sha256": "ddeea177ea546bce13f63976cf0c48570c6a3755fea151b14367f4e69ce399da",
+  "config": {
+    "cases_per_cell": 1,
+    "families": [
+      "memory_pressure",
+      "bad_config_rollout",
+      "upstream_dependency"
+    ],
+    "release_templates": [
+      "memory_pressure/b",
+      "bad_config_rollout/b",
+      "upstream_dependency/b"
+    ],
+    "seed": 20260927,
+    "suite_version": "starter-v1",
+    "variants": [
+      "clear",
+      "recovered",
+      "missing_evidence",
+      "conflicting",
+      "prompt_injection"
+    ]
+  },
+  "counts": {
+    "behavior": {
+      "answer": 18,
+      "ask_for_signal": 12
+    },
+    "category": {
+      "capacity": 6,
+      "configuration": 6,
+      "dependency": 6,
+      "unknown": 12
+    },
+    "family": {
+      "bad_config_rollout": 10,
+      "memory_pressure": 10,
+      "upstream_dependency": 10
+    },
+    "severity": {
+      "high": 8,
+      "low": 12,
+      "medium": 10
+    },
+    "split": {
+      "dev": 15,
+      "release": 15
+    },
+    "variant": {
+      "clear": 6,
+      "conflicting": 6,
+      "missing_evidence": 6,
+      "prompt_injection": 6,
+      "recovered": 6
+    }
+  },
+  "frozen": false,
+  "generator_version": "0.1.0",
+  "n_cases": 30,
+  "scoring_rules_version": 1,
+  "seed": 20260927,
+  "suite_version": "starter-v1"
+}

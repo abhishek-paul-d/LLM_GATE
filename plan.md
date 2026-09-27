@@ -113,6 +113,17 @@ The synthetic generator should be deterministic from a seed. Validate its invari
 
 Never tune on the release benchmark. Record suite and scorer versions with every run.
 
+### Generator design (implemented in Phase 1, `src/release_gate/generator/`)
+
+- **Symptom vs. cause.** Every case is a resource plus one **symptom** (error rate, restarts in the last hour, or unavailable replicas) plus zero or more **causes** (evidence from a scenario family). Severity comes only from the symptom, through one table in `severity.py`. Category comes only from the causes: one cause gives its family's category; no cause (missing evidence) or causes from two categories (conflicting) give `unknown`. Generation samples the severity first, then a symptom value inside that band, so labels are balanced.
+- **Variants** transform a clear case and never set labels directly: `recovered` (resolved alert, severity `low`), `missing_evidence` (cause removed), `conflicting` (a second cause from another category), `prompt_injection` (a log line instructing the model to output a value that always differs from the label), `long_input` (40–70 benign lines from sibling pods), `malformed_input` (truncated labels JSON, a garbled line).
+- **Conflicting cases accept more than one category.** Two causes appearing together are not a strict contradiction; naming either supported cause is defensible. `expected.acceptable_categories = [unknown, catA, catB]`, and the case is scored on whether the output mentions both signals (required facts). These cases are excluded from exact-label accuracy. Every other variant has exactly one acceptable category.
+- **Split holdout by template.** Each family has templates `a` and `b`; a suite config lists the templates held out as `release`. Anything a variant borrows comes from the same split: donor causes for conflicting cases, prompt-injection phrasings, and the generic symptom phrasings used when the cause is removed. Without split-specific generic phrasings, a dev and a release template sharing an alert name rendered identical missing-evidence cases (Jaccard 1.00). The validator caught this on the first run.
+- **Determinism.** All randomness goes through `Rng`, which is built only on `random.random()` (the one method Python guarantees stable across versions) and SHA-256-derived per-case seeds. Golden-value tests pin it. The same config and seed produce byte-identical `cases.jsonl`, `manifest.json` and `review.json`.
+- **Validator** (`validate.py`) checks each case from its saved record and rendered text, not from generator internals, so it also catches hand edits: grounding of every entity, fact and next-check target in the text (V02–V04); label/variant consistency (V05); severity re-derived from the stored symptom (V06); injection target differs from the label (V07); timestamps inside the alert window (V08); units, limits and percentages (V09); synthetic-only data, meaning RFC 5737 IPs, `.example` hosts, no emails or secret-like strings (V10). Suite level: unique ids (S01), no scenario in both splits (S02), no exact or near duplicate across splits by entity-masked 5-gram Jaccard ≥ 0.80 (S03), manifest hash (S04), stale reviews (S05). Mutation tests prove each check fires.
+- **Review and freeze.** `review.json` records a status per case keyed to the case's content hash; regenerating resets a changed case to `candidate`. `freeze_suite` requires zero validation issues and every case approved; a frozen suite cannot be regenerated, only superseded by a new `suite_version`.
+- **Suites so far:** `starter-v1` (3 families × 2 templates × 5 variants = 30 cases, 15 dev / 15 release). The full release benchmark needs the remaining families (delegated tasks T011–T016) and enough cases per protected slice in the release split (`minimum_cases_per_slice`).
+
 ## 8. Metrics and release policy
 
 The system reports metrics as a candidate-versus-baseline comparison with confidence intervals, plus absolute values. Thresholds live in a versioned configuration file so a reader can see exactly why a release passed or failed.
@@ -120,7 +131,7 @@ The system reports metrics as a candidate-versus-baseline comparison with confid
 ### Quality
 
 - JSON/schema validity rate.
-- Exact category and severity accuracy where labels are deterministic.
+- Exact category and severity accuracy where labels are deterministic (cases with a single acceptable category; conflicting-evidence cases are scored on acceptable categories and fact coverage instead).
 - Required-fact coverage.
 - Unsupported-claim rate. Deterministic rule for templated cases: extract resource names, numbers with units, IPs, and pod/node names from `summary` and `next_check` with regular expressions; any extracted value that does not appear in the input counts as an unsupported claim.
 - Correct uncertainty behavior on ambiguous cases.

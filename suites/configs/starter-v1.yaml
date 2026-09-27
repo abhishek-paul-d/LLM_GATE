@@ -1,0 +1,21 @@
+# Starter suite (plan.md Phase 1): 3 families x 2 templates x 5 variants = 30 cases.
+# Template "b" of every family is held out as the release split; "a" is development.
+# Regenerating with the same config and seed is byte-identical.
+
+suite_version: starter-v1
+seed: 20260927
+families:
+  - memory_pressure
+  - bad_config_rollout
+  - upstream_dependency
+variants:
+  - clear
+  - recovered
+  - missing_evidence
+  - conflicting
+  - prompt_injection
+cases_per_cell: 1
+release_templates:
+  - memory_pressure/b
+  - bad_config_rollout/b
+  - upstream_dependency/b

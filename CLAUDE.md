@@ -8,7 +8,8 @@ LLM Release Gate compares a **candidate** LLM configuration against the approved
 
 - The **gate is the product**. Alert-to-JSON triage is only the demo workload.
 - `plan.md` is the source of truth for scope, metrics, policy, and phases. Read the relevant section before changing behavior; update `plan.md` when a design decision changes.
-- Current status: **planning / Phase 0**. No code exists yet. Open decisions are listed in `plan.md` §18. Don't settle them silently; ask.
+- Current status: Phase 0 done; **Phase 1 (synthetic generator)** in progress. `memory.md` has the latest state. Open decisions are listed in `plan.md` §18. Don't settle them silently; ask.
+- Generator rules: labels are derived, never set by hand (severity from the symptom, category from the causes). Anything a variant borrows must come from the same split. Every change must keep `validate_cases` at zero issues and the cross-split similarity margin. Never read release-split cases while designing prompts or scorers.
 
 ## Non-negotiable rules
 
