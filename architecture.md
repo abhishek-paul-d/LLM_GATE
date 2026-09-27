@@ -162,7 +162,7 @@ These are enforced by code and tests, not just stated:
 |---|---|---|
 | 0 | Contract, policy, gate engine, `gate decide`, Markdown report, triage schema | **Done** |
 | — | Model registry (`models/*.yaml`, `gate models`) | **Done** |
-| 1 | Synthetic suite generator, validator, review/freeze, `gate suite`, 9 scenario families, `starter-v1` suite | **Code done**; starter cases await human review; full release benchmark not yet designed |
+| 1 | Synthetic suite generator, validator, review/freeze, `gate suite`, 9 scenario families, `starter-v1` suite | **Code done**; `starter-v1` reviewed and frozen (2026-09-28); full release benchmark not yet designed |
 | 2 | Runner, mock endpoint, run manifest, `gate run` / `gate replay`, Colab notebook | **Done**: prompt, adapter, mock model and server, runner, manifest, `gate run`, Colab notebook |
 | 3 (v1) | Scorers, paired statistics, `metrics.json`, score/replay of saved runs | **Done** (v1), including `gate score` / `gate replay`; cost metrics moved to Phase 4 |
 | 4–6 | Load tests + fault proxy, CI + Kubernetes, UI | Not started |
@@ -472,7 +472,7 @@ Exit 1 from `generate` and `validate` means "the suite has issues". It is a diff
 
 ### The starter suite
 
-`suites/starter-v1`: 3 families (memory_pressure, bad_config_rollout, upstream_dependency) × 2 templates × 5 variants (clear, recovered, missing_evidence, conflicting, prompt_injection) = **30 cases**, 15 dev (templates `a`) and 15 release (templates `b`). It validates with zero issues. A test regenerates it from its config and asserts the committed files match. All 30 cases are `candidate`: they still need human review before freezing.
+`suites/starter-v1`: 3 families (memory_pressure, bad_config_rollout, upstream_dependency) × 2 templates × 5 variants (clear, recovered, missing_evidence, conflicting, prompt_injection) = **30 cases**, 15 dev (templates `a`) and 15 release (templates `b`). It validates with zero issues. A test regenerates it from its config and asserts the committed files match. All 30 cases are approved (dev split reviewed by Claude as a model review, release split by the user, whose content Claude never read) and the suite is **frozen** (2026-09-28): it can't be regenerated, only superseded by a new version.
 
 ## 2.7 The evaluation runner (Phase 2)
 

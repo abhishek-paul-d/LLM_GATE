@@ -9,7 +9,7 @@ LLM Release Gate compares a **candidate** LLM configuration against the approved
 - The **gate is the product**. Alert-to-JSON triage is only the demo workload.
 - `architecture.md` explains how the system and the built code work; keep it current when a component lands or changes.
 - `plan.md` is the source of truth for scope, metrics, policy, and phases. Read the relevant section before changing behavior; update `plan.md` when a design decision changes.
-- Current status: Phases 0–2 code done (starter suite awaits human review); **Phase 3 v1** (scorers, stats, metrics, `gate score`/`gate replay`) done. Next: the first real Colab run (plan §17). Cost metrics are deferred to Phase 4, so gate with `policies/policy_v2.yaml` (v1 without cost) until then. `memory.md` has the latest state. Open decisions are listed in `plan.md` §18. Don't settle them silently; ask.
+- Current status: Phases 0–2 code done (`starter-v1` reviewed and frozen); **Phase 3 v1** (scorers, stats, metrics, `gate score`/`gate replay`) done. Next: the first real Colab run (plan §17). Cost metrics are deferred to Phase 4, so gate with `policies/policy_v2.yaml` (v1 without cost) until then. `memory.md` has the latest state. Open decisions are listed in `plan.md` §18. Don't settle them silently; ask.
 - Generator rules: labels are derived, never set by hand (severity from the symptom, category from the causes). Anything a variant borrows must come from the same split. Every change must keep `validate_cases` at zero issues and the cross-split similarity margin. Never read release-split cases while designing prompts or scorers.
 
 ## Non-negotiable rules

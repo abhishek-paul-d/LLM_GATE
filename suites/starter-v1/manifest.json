@@ -56,7 +56,7 @@
       "recovered": 6
     }
   },
-  "frozen": false,
+  "frozen": true,
   "generator_version": "0.2.0",
   "n_cases": 30,
   "scoring_rules_version": 1,
