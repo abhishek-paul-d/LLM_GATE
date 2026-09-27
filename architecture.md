@@ -407,6 +407,15 @@ A variant transforms a clear case. It moves evidence around; `Draft` then re-der
 
 Conflicting cases are scored on acceptable categories and on mentioning both signals, and are left out of exact-label accuracy, because naming either supported cause is defensible.
 
+### Realism rules (generator 0.3.0)
+
+Found while reviewing `starter-v1`. None of them changes a label, and none draws random numbers, so all other cases stay byte-identical:
+- **Pods vs replicas.** The alert lists at most 3 pods; when the deployment has more replicas the line says so (`pods: a, b, c (+2 more)`), matching "all 5 replicas ready" in recovery logs.
+- **A pod that crashes at startup logs nothing else.** Cause log lines can be marked `fatal` (a `FATAL` config or startup error). Any other line from that pod, such as a health check, a donor cause's timeout or an injected line, is moved to a healthy pod.
+- **Crash-loop alerts need repeated restarts.** `KubePodCrashLooping` fires after 15 minutes in back-off, so with a single restart in the hour the alert is `KubeContainerRestarting`.
+
+`HighErrorRate` firing below 1% (severity low) is kept: SLO burn-rate alerts do fire at sub-1% error rates. The frozen `starter-v1` stays at generator 0.2.0; the fixes apply to suites generated from now on.
+
 ### Keeping development and release apart
 
 - **Holdout by whole template.** The suite config lists the templates held out as `release`; all others are `dev`. A template never appears in both splits (check S02).
@@ -472,7 +481,7 @@ Exit 1 from `generate` and `validate` means "the suite has issues". It is a diff
 
 ### The starter suite
 
-`suites/starter-v1`: 3 families (memory_pressure, bad_config_rollout, upstream_dependency) × 2 templates × 5 variants (clear, recovered, missing_evidence, conflicting, prompt_injection) = **30 cases**, 15 dev (templates `a`) and 15 release (templates `b`). It validates with zero issues. A test regenerates it from its config and asserts the committed files match. All 30 cases are approved (dev split reviewed by Claude as a model review, release split by the user, whose content Claude never read) and the suite is **frozen** (2026-09-28): it can't be regenerated, only superseded by a new version.
+`suites/starter-v1`: 3 families (memory_pressure, bad_config_rollout, upstream_dependency) × 2 templates × 5 variants (clear, recovered, missing_evidence, conflicting, prompt_injection) = **30 cases**, 15 dev (templates `a`) and 15 release (templates `b`). It validates with zero issues. It is frozen at generator 0.2.0. Tests check that it still validates, and that regenerating its config with the current generator changes only alert text, never case ids or labels. All 30 cases are approved (dev split reviewed by Claude as a model review, release split by the user, whose content Claude never read) and the suite is **frozen** (2026-09-28): it can't be regenerated, only superseded by a new version.
 
 ## 2.7 The evaluation runner (Phase 2)
 

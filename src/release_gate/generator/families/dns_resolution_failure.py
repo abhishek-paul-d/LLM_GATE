@@ -34,7 +34,11 @@ def _datastore_dns_timeout(rng: Rng, r: Resource, t: datetime) -> Cause:
     host = names.host(store, r.namespace)
     return Cause(
         category="dependency",
-        logs=(LogLine(minutes(t, -5, 0, rng), rng.pick(r.pods), f"FATAL startup: could not resolve {host}: i/o timeout"),),
+        logs=(
+            LogLine(
+                minutes(t, -5, 0, rng), rng.pick(r.pods), f"FATAL startup: could not resolve {host}: i/o timeout", fatal=True
+            ),
+        ),
         facts=(("could not resolve", "DNS", "i/o timeout"), (store, host)),
         entities=(store, host),
         check_targets=(store,),

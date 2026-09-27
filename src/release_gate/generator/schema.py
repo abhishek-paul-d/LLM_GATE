@@ -15,7 +15,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..schemas.triage import Category
 from .severity import Severity, SymptomKind
 
-GENERATOR_VERSION = "0.2.0"
+GENERATOR_VERSION = "0.3.0"
 SCORING_RULES_VERSION = 1
 
 Variant = Literal[

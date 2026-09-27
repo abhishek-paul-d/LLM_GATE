@@ -17,7 +17,7 @@ def _missing_env_var(rng: Rng, r: Resource, t: datetime) -> Cause:
         category="configuration",
         logs=(
             LogLine(minutes(t, -12, -6, rng), "deployment-controller", f"deployment/{r.name} rolled out revision {revision}"),
-            LogLine(minutes(t, -5, -1, rng), rng.pick(r.pods), f"FATAL config: required environment variable {var} is not set"),
+            LogLine(minutes(t, -5, -1, rng), rng.pick(r.pods), f"FATAL config: required environment variable {var} is not set", fatal=True),
         ),
         facts=((var, "environment variable", "env var"), (f"revision {revision}", "rollout", "rolled out")),
         entities=(var, f"revision {revision}"),

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 
 from ..schemas.triage import Category
@@ -88,6 +88,9 @@ class LogLine:
     at: datetime
     source: str
     message: str
+    # The container exits at startup (e.g. a FATAL config error), so this pod never serves
+    # traffic: ``Draft.logs`` moves the pod's other lines to a healthy pod.
+    fatal: bool = False
 
 
 @dataclass(frozen=True)
@@ -177,6 +180,11 @@ def sample_start(rng: Rng) -> datetime:
 
 def minutes(t: datetime, lo: int, hi: int, rng: Rng) -> datetime:
     return t + timedelta(minutes=rng.between(lo, hi), seconds=rng.between(0, 59))
+
+
+# KubePodCrashLooping fires after 15 minutes in CrashLoopBackOff, which means many restarts.
+# With a single restart in the hour the realistic alert is the generic restart alert.
+CRASH_LOOP_ALERT, SINGLE_RESTART_ALERT, CRASH_LOOP_MIN_RESTARTS = "KubePodCrashLooping", "KubeContainerRestarting", 2
 
 
 # What the output must say about the symptom when there is no cause to name. Concept phrases,
@@ -300,6 +308,12 @@ class Draft:
         lines = [*self.context_logs, *self.extra_logs]
         for c in self.causes:
             lines += c.logs
+        # A pod whose container dies at startup never serves traffic, so any other line
+        # attributed to it moves to the first healthy pod (no RNG draw: other cases are unchanged).
+        crashed = {line.source for line in lines if line.fatal}
+        healthy = [p for p in self.resource.pods if p not in crashed]
+        if crashed and healthy:
+            lines = [line if line.fatal or line.source not in crashed else replace(line, source=healthy[0]) for line in lines]
         return sorted(lines, key=lambda line: line.at)  # stable: ties keep insertion order
 
     def render(self) -> str:
@@ -311,7 +325,7 @@ class Draft:
             f"cluster: {r.cluster}",
             f"namespace: {r.namespace}",
             f"resource: {r.kind}/{r.name}",
-            f"pods: {', '.join(r.pods)}",
+            f"pods: {', '.join(r.pods)}" + (f" (+{r.replicas - len(r.pods)} more)" if r.replicas > len(r.pods) else ""),
             f"started_at: {iso(self.started_at)}",
         ]
         if self.resolved_at is not None:
@@ -378,6 +392,7 @@ def base_draft(family: Family, template: Template, split: str, rng: Rng) -> Draf
     if cause.category != family.category:
         raise ValueError(f"{template.scenario_id} built a {cause.category} cause for a {family.category} family")
     context = [LogLine(minutes(t, -25, -15, rng), rng.pick(r.pods), "GET /healthz 200")]
+    single_restart = template.alert_name == CRASH_LOOP_ALERT and symptom.value < CRASH_LOOP_MIN_RESTARTS
     return Draft(
         family=family,
         template=template,
@@ -388,5 +403,6 @@ def base_draft(family: Family, template: Template, split: str, rng: Rng) -> Draf
         symptom=symptom,
         causes=[cause],
         context_logs=context,
+        alert_override=SINGLE_RESTART_ALERT if single_restart else None,
         tags=["clear"],
     )

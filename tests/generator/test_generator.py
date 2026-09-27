@@ -14,6 +14,7 @@ from release_gate.generator import (
     generate_cases,
     load_config,
     read_cases,
+    read_manifest,
     validate_cases,
     validate_suite_dir,
     write_suite,
@@ -21,7 +22,13 @@ from release_gate.generator import (
 from release_gate.generator.build import REVIEW_FILE, case_sha256
 from release_gate.generator.families import FAMILIES
 from release_gate.generator.rng import Rng, derive_seed
-from release_gate.generator.scenario import GENERIC_SYMPTOM_PHRASINGS, SYMPTOM_ALERTS
+from release_gate.generator.scenario import (
+    CRASH_LOOP_ALERT,
+    CRASH_LOOP_MIN_RESTARTS,
+    GENERIC_SYMPTOM_PHRASINGS,
+    SINGLE_RESTART_ALERT,
+    SYMPTOM_ALERTS,
+)
 from release_gate.generator.schema import VARIANTS, SuiteCase, SuiteConfig
 from release_gate.generator.validate import cross_split_similarity, validate_case
 from release_gate.generator.variants import INJECTION_PHRASINGS
@@ -80,10 +87,21 @@ def test_starter_config_shape():
     assert validate_cases(cases) == []
 
 
-def test_committed_starter_suite_matches_generator():
+def test_frozen_starter_suite_is_intact():
+    """starter-v1 is frozen at generator 0.2.0: it must keep validating and match its manifest hash."""
     suite_dir = ROOT / "suites" / "starter-v1"
+    manifest = read_manifest(suite_dir)
+    assert manifest.frozen and manifest.generator_version == "0.2.0"
     assert validate_suite_dir(suite_dir) == []
-    assert [c.model_dump() for c in read_cases(suite_dir)] == [c.model_dump() for c in generate_cases(load_config(STARTER))]
+
+
+def test_generator_changes_since_starter_v1_are_text_only():
+    """Realism fixes in 0.3.0 may change alert text, never case ids or labels, of the same config."""
+    frozen = read_cases(ROOT / "suites" / "starter-v1")
+    fresh = generate_cases(load_config(STARTER))
+    assert [c.case_id for c in fresh] == [c.case_id for c in frozen]
+    for old, new in zip(frozen, fresh, strict=True):
+        assert old.model_dump(exclude={"input_text"}) == new.model_dump(exclude={"input_text"}), old.case_id
 
 
 def test_probe_suite_is_valid(probe):
@@ -334,6 +352,8 @@ def test_missing_evidence_never_names_the_cause_in_the_alert(probe_all):
         if c.variant == "missing_evidence":
             assert _alert(c) in SYMPTOM_ALERTS[c.symptom.kind], c.case_id
             swapped += _alert(c) != own
+        elif own == CRASH_LOOP_ALERT and c.symptom.metric.value < CRASH_LOOP_MIN_RESTARTS:
+            assert _alert(c) == SINGLE_RESTART_ALERT, c.case_id
         else:
             assert _alert(c) == own, c.case_id
     assert swapped > 0  # some templates (e.g. KubePersistentVolumeFillingUp) do name their cause
@@ -343,6 +363,54 @@ def test_cause_naming_alert_on_missing_evidence_is_caught(probe_all):
     c = next(c for c in probe_all if c.variant == "missing_evidence")
     text = c.input_text.replace(_alert(c), "KubePersistentVolumeFillingUp")
     assert "V05" in _codes(validate_case(c.model_copy(update={"input_text": text})))
+
+
+# --------------------------------------------------------------------------- realism (generator 0.3.0)
+
+
+def _line(c: SuiteCase, key: str) -> str:
+    return next(line for line in c.input_text.splitlines() if line.startswith(f"{key}: "))
+
+
+def _log_lines(c: SuiteCase) -> list[tuple[str, str]]:
+    """(source, message) of every log line."""
+    logs = c.input_text.split("\nlogs:\n", 1)[1].splitlines()
+    return [tuple(line.strip().split(" ", 2)[1:]) for line in logs if line.strip()]
+
+
+def test_pods_line_accounts_for_every_replica(probe_all):
+    for c in probe_all:
+        pods = _line(c, "pods")
+        listed = len(pods.split(" (+")[0].removeprefix("pods: ").split(", "))
+        more = int(pods.split(" (+")[1].split()[0]) if " (+" in pods else 0
+        for _, message in _log_lines(c):
+            if message.endswith("replicas ready"):
+                assert f"all {listed + more} replicas ready" in message, c.case_id
+        if c.symptom.kind == "unavailable_replicas":
+            assert c.symptom.metric.limit == listed + more, c.case_id
+
+
+def test_a_pod_that_crashes_at_startup_logs_nothing_else(probe_all):
+    checked = 0
+    for c in probe_all:
+        lines = _log_lines(c)
+        crashed = {source for source, message in lines if message.startswith("FATAL")}
+        for source, message in lines:
+            if source in crashed:
+                assert message.startswith("FATAL"), (c.case_id, source, message)
+        checked += bool(crashed)
+    assert checked > 0
+
+
+def test_crash_loop_alert_needs_repeated_restarts(probe_all):
+    seen = Counter()
+    for c in probe_all:
+        if _alert(c) == CRASH_LOOP_ALERT:
+            assert c.symptom.metric.value >= CRASH_LOOP_MIN_RESTARTS, c.case_id
+            seen["crash_loop"] += 1
+        elif _alert(c) == SINGLE_RESTART_ALERT and c.symptom.metric.value < CRASH_LOOP_MIN_RESTARTS:
+            seen["single_restart"] += 1
+    assert seen["crash_loop"] and seen["single_restart"]
 
 
 def test_cases_per_variant_overrides_cell_count():
