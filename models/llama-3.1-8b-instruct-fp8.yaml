@@ -8,7 +8,7 @@ description: Meta Llama 3.1 8B Instruct, FP8 weights quantized at load time, bf1
 
 model:
   id: meta-llama/Llama-3.1-8B-Instruct
-  revision: main          # pin a 40-char commit SHA for release runs
+  revision: 0e9e39f249a16976918f6564b8830bc894c89659  # Hugging Face commit, pinned 2026-09-28
   license: llama3.1       # Llama 3.1 Community License
   gated: true             # accept the license on Hugging Face; Colab needs secret HF_TOKEN
 

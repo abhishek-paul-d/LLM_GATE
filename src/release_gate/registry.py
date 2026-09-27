@@ -27,8 +27,8 @@ class _Strict(BaseModel):
 
 class HFModel(_Strict):
     id: str = Field(pattern=r"^[\w.-]+/[\w.-]+$", description="Hugging Face repo id, e.g. Qwen/Qwen3-8B")
-    # Branch, tag, or 40-char commit SHA. Release runs should pin a SHA; the run manifest
-    # always records the resolved SHA either way.
+    # Branch, tag, or 40-char commit SHA. Release runs must pin a SHA: the run manifest records
+    # this value as given, so a branch like "main" does not identify the weights that were served.
     revision: str = "main"
     license: str
     gated: bool = False  # needs license acceptance and an HF token (Colab secret HF_TOKEN)
@@ -49,7 +49,7 @@ class Serving(_Strict):
     @model_validator(mode="after")
     def _no_managed_flags_in_extra_args(self) -> Serving:
         managed = {
-            "--model", "--revision", "--dtype", "--quantization", "--max-model-len",
+            "--model", "--revision", "--tokenizer-revision", "--dtype", "--quantization", "--max-model-len",
             "--gpu-memory-utilization", "--port", "--host", "--served-model-name", "--seed",
         }  # fmt: skip
         clash = sorted({a.split("=", 1)[0] for a in self.extra_args} & managed)
@@ -108,6 +108,8 @@ class ModelSpec(_Strict):
         args = [
             "vllm", "serve", self.model.id,
             "--revision", self.model.revision,
+            # The chat template ships with the tokenizer, so pin it to the same commit.
+            "--tokenizer-revision", self.model.revision,
             "--served-model-name", self.name,
             "--dtype", s.dtype,
             "--max-model-len", str(s.max_model_len),

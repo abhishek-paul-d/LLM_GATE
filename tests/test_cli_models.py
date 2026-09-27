@@ -16,8 +16,10 @@ def test_models_list_prints_shipped_specs(capsys: pytest.CaptureFixture[str]) ->
     assert result == 0
     lines = captured.out.splitlines()
     assert len(lines) == 2
-    assert lines[0].startswith("llama-3.1-8b-instruct-fp8\tmeta-llama/Llama-3.1-8B-Instruct\tmain\tunpinned\tgated")
-    assert lines[1].startswith("qwen3-8b-fp8\tQwen/Qwen3-8B\tmain\tunpinned\topen")
+    assert lines[0].startswith(
+        "llama-3.1-8b-instruct-fp8\tmeta-llama/Llama-3.1-8B-Instruct\t0e9e39f249a16976918f6564b8830bc894c89659\tpinned\tgated"
+    )
+    assert lines[1].startswith("qwen3-8b-fp8\tQwen/Qwen3-8B\tb968826d9c46dd6066d109eabc6255188de91218\tpinned\topen")
     assert captured.err == ""
 
 
@@ -47,7 +49,7 @@ def test_models_serve_cmd_prints_vllm_command(capsys: pytest.CaptureFixture[str]
     output = capsys.readouterr().out.strip()
 
     assert result == 0
-    assert output.startswith("vllm serve Qwen/Qwen3-8B --revision main")
+    assert output.startswith("vllm serve Qwen/Qwen3-8B --revision b968826d9c46dd6066d109eabc6255188de91218 --tokenizer-revision")
     assert "--port 8002" in output
     assert "--quantization fp8" in output
     assert "--gpu-memory-utilization 0.9" in output

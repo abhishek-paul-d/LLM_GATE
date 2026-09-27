@@ -168,16 +168,24 @@ def test_bad_name_rejected():
 
 def test_revision_pinning():
     doc = _spec_doc()
+    doc["model"]["revision"] = "main"
     assert not ModelSpec.model_validate(doc).revision_pinned
     doc["model"]["revision"] = "a" * 40
     assert ModelSpec.model_validate(doc).revision_pinned
+
+
+def test_shipped_specs_are_pinned():
+    # The Colab notebook refuses unpinned specs; catch it here instead of in a paid session.
+    for name in ("llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"):
+        assert load_model_spec(name, MODELS).revision_pinned, name
 
 
 def test_vllm_serve_args():
     s = load_model_spec("qwen3-8b-fp8", MODELS)
     assert s.vllm_serve_args(port=8002, gpu_memory_utilization=0.9) == [
         "vllm", "serve", "Qwen/Qwen3-8B",
-        "--revision", "main",
+        "--revision", "b968826d9c46dd6066d109eabc6255188de91218",
+        "--tokenizer-revision", "b968826d9c46dd6066d109eabc6255188de91218",
         "--served-model-name", "qwen3-8b-fp8",
         "--dtype", "bfloat16",
         "--max-model-len", "8192",

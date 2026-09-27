@@ -22,7 +22,7 @@ Both shipped specs use FP8 weights with bf16 activations.
 
 ## Field notes
 
-- `revision`: use a 40-character commit SHA for release runs. `main` is fine while developing; the run manifest records the resolved SHA.
+- `revision`: a 40-character commit SHA. The Colab notebook refuses unpinned specs, because the run manifest records the revision as given and `main` does not say which weights ran. `main` is fine only against the local mock. The same commit is used for the tokenizer and chat template (`--tokenizer-revision`). Look up a SHA at `https://huggingface.co/api/models/<id>` (field `sha`).
 - `structured_output`: `none` measures whether the model produces valid JSON by itself. `json_schema` makes vLLM constrain decoding; changing it changes what is being tested.
 - `chat_template_kwargs`: Qwen3 specs must set `enable_thinking` explicitly or loading fails.
 - `extra_args`: extra `vllm serve` flags. Flags managed by the spec, such as `--port`, `--max-model-len`, `--seed`, and `--gpu-memory-utilization`, are refused.

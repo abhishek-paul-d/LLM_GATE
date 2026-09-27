@@ -8,7 +8,7 @@ description: Qwen3 8B, FP8 weights quantized at load time, bf16 activations, thi
 
 model:
   id: Qwen/Qwen3-8B
-  revision: main          # pin a 40-char commit SHA for release runs
+  revision: b968826d9c46dd6066d109eabc6255188de91218  # Hugging Face commit, pinned 2026-09-28
   license: apache-2.0
   gated: false
 
