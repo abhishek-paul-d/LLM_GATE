@@ -218,6 +218,17 @@ def test_sensitive_looking_strings_rejected(probe, snippet):
     assert "V10" in _codes(validate_case(c.model_copy(update={"input_text": c.input_text + snippet + "\n"})))
 
 
+def test_url_hosts_must_be_synthetic(probe):
+    c = _one(probe)
+
+    def codes_with(line: str) -> set[str]:
+        return _codes(validate_case(c.model_copy(update={"input_text": c.input_text + line + "\n"})))
+
+    assert "V10" not in codes_with('Get "http://192.0.2.10:9090/ready"')
+    assert "V10" in codes_with('Get "http://10.0.0.8:9090/ready"')
+    assert "V10" in codes_with("see https://status.internal/ready")
+
+
 def test_metric_percent_mismatch_caught(probe):
     c = next(c for c in probe if any(m.unit == "GiB" for m in c.metrics))
     metrics = [m.model_copy(update={"value": m.limit * 0.5}) if m.unit == "GiB" else m for m in c.metrics]
@@ -261,6 +272,14 @@ def test_regeneration_keeps_matching_reviews_and_resets_changed(tmp_path):
     assert {r["status"] for r in json.loads((suite_dir / REVIEW_FILE).read_text()).values()} == {"approved"}
     write_suite(_config(seed=99), tmp_path)  # every case changed
     assert {r["status"] for r in json.loads((suite_dir / REVIEW_FILE).read_text()).values()} == {"candidate"}
+
+
+def test_malformed_review_file_is_an_error_not_a_crash(tmp_path):
+    suite_dir = write_suite(_config(), tmp_path)
+    (suite_dir / REVIEW_FILE).write_text("[1, 2]", encoding="utf-8")
+    assert _codes(validate_suite_dir(suite_dir)) == {"V01"}
+    with pytest.raises(ValueError, match="must map case_id"):
+        write_suite(_config(), tmp_path)  # never silently overwrite a review file it cannot read
 
 
 def test_hand_edited_suite_is_detected(tmp_path):

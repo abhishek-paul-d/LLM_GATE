@@ -1,10 +1,15 @@
-"""Command-line interface for evaluating saved release metrics."""
+"""Command-line interface for evaluating saved release metrics and synthetic suites.
+
+Suite validation exit code 1 means the suite has issues; it is not a HOLD decision.
+"""
 
 from __future__ import annotations
 
 import argparse
+import json
 import shlex
 import sys
+from collections import Counter
 from pathlib import Path
 
 import yaml
@@ -12,6 +17,17 @@ from pydantic import ValidationError
 
 from release_gate import registry
 from release_gate.gate import evaluate, load_metrics, load_policy
+from release_gate.generator import (
+    FrozenSuiteError,
+    freeze_suite,
+    load_config,
+    read_cases,
+    read_manifest,
+    validate_suite_dir,
+    write_suite,
+)
+from release_gate.generator import build as suite_build
+from release_gate.generator.schema import ReviewRecord
 from release_gate.report import render_markdown
 
 EXIT_USAGE = 4
@@ -53,9 +69,36 @@ def main(argv: list[str] | None = None) -> int:
     for models_action_parser in (models_list_parser, models_show_parser, models_serve_parser):
         models_action_parser.add_argument("--models-dir", type=Path, default=registry.DEFAULT_MODELS_DIR)
 
+    suite_parser = subparsers.add_parser("suite", help="generate, inspect, review, and freeze synthetic suites")
+    suite_subparsers = suite_parser.add_subparsers(dest="suite_command", required=True, parser_class=ExitUsageArgumentParser)
+    suite_generate_parser = suite_subparsers.add_parser("generate", help="generate and validate a suite")
+    suite_generate_parser.add_argument("--config", type=Path, required=True)
+    suite_generate_parser.add_argument("--out-root", type=Path, default=Path("suites"))
+    suite_validate_parser = suite_subparsers.add_parser("validate", help="validate a generated suite")
+    suite_validate_parser.add_argument("suite_dir", type=Path)
+    suite_freeze_parser = suite_subparsers.add_parser("freeze", help="freeze a fully approved suite")
+    suite_freeze_parser.add_argument("suite_dir", type=Path)
+    suite_show_parser = suite_subparsers.add_parser("show", help="show cases in a suite")
+    suite_show_parser.add_argument("suite_dir", type=Path)
+    suite_show_parser.add_argument("--split", choices=("dev", "release"))
+    suite_show_parser.add_argument("--case", dest="case_id")
+    suite_review_parser = suite_subparsers.add_parser("review", help="record a review for one case")
+    suite_review_parser.add_argument("suite_dir", type=Path)
+    suite_review_parser.add_argument("--case", dest="case_id", required=True)
+    suite_review_parser.add_argument("--status", choices=("approved", "rejected", "candidate"), required=True)
+    suite_review_parser.add_argument("--reviewer", required=True)
+    suite_review_parser.add_argument("--notes", default="")
+
     args = parser.parse_args(argv)
-    if args.command == "models":
-        return _run_models_command(args)
+    if args.command in ("models", "suite"):
+        handler = _run_models_command if args.command == "models" else _run_suite_command
+        # Expected failures are handled inside the handler; this keeps an unexpected one from
+        # escaping with exit 1, which CI would read as HOLD.
+        try:
+            return handler(args)
+        except Exception as exc:  # noqa: BLE001 - exit-code contract must hold for every failure
+            print(f"error: internal error: {type(exc).__name__}: {exc}", file=sys.stderr)
+            return EXIT_USAGE
 
     try:
         metrics = load_metrics(args.metrics)
@@ -108,6 +151,88 @@ def _run_models_command(args: argparse.Namespace) -> int:
         return 0
     except (OSError, ValueError, yaml.YAMLError) as exc:
         # ValueError also covers pydantic.ValidationError from model spec validation.
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
+
+def _run_suite_command(args: argparse.Namespace) -> int:
+    """Run suite operations; suite validation issues use status 1, separate from gate HOLD."""
+    try:
+        if args.suite_command == "generate":
+            config = load_config(args.config)
+            suite_dir = write_suite(config, args.out_root)
+            issues = validate_suite_dir(suite_dir)
+            print(f"wrote {suite_dir} ({read_manifest(suite_dir).n_cases} cases)")
+            for issue in issues:
+                print(str(issue), file=sys.stderr)
+            return 0 if not issues else 1
+
+        suite_dir = args.suite_dir
+        if args.suite_command == "validate":
+            issues = validate_suite_dir(suite_dir)
+            for issue in issues:
+                print(str(issue), file=sys.stderr)
+            reviews = suite_build.read_reviews(suite_dir)
+            counts = Counter(review.status for review in reviews.values())
+            print(
+                f"{len(issues)} issue(s); reviews: {counts['approved']} approved, "
+                f"{counts['candidate']} candidate, {counts['rejected']} rejected"
+            )
+            return 0 if not issues else 1
+
+        if args.suite_command == "freeze":
+            manifest = freeze_suite(suite_dir)
+            print(f"frozen {manifest.suite_version} ({manifest.n_cases} cases, sha256 {manifest.cases_sha256[:12]})")
+            return 0
+
+        if args.suite_command == "show":
+            cases = read_cases(suite_dir)
+            matching = [case for case in cases if (args.split is None or case.split == args.split)]
+            if args.case_id is not None:
+                matching = [case for case in matching if case.case_id == args.case_id]
+                if not matching:
+                    print(f"error: case {args.case_id} not found", file=sys.stderr)
+                    return EXIT_USAGE
+            for case in matching:
+                print(f"=== {case.case_id} [{case.split}] {case.variant}")
+                expected = case.expected
+                print(
+                    f"expected: category={expected.category} acceptable={','.join(expected.acceptable_categories)} "
+                    f"severity={expected.severity} behavior={expected.behavior}"
+                )
+                print(f"facts: {json.dumps(expected.required_facts)}")
+                print(f"targets: {','.join(expected.next_check_targets)}")
+                sys.stdout.write(case.input_text)
+                if not case.input_text.endswith("\n"):
+                    sys.stdout.write("\n")
+                print()
+            return 0
+
+        manifest = read_manifest(suite_dir)
+        if manifest.frozen:
+            print("error: suite is frozen", file=sys.stderr)
+            return EXIT_USAGE
+        reviews = suite_build.read_reviews(suite_dir)
+        if args.case_id not in reviews:
+            print(f"error: case {args.case_id} not found", file=sys.stderr)
+            return EXIT_USAGE
+        case = next((candidate for candidate in read_cases(suite_dir) if candidate.case_id == args.case_id), None)
+        if case is None:
+            print(f"error: case {args.case_id} not found", file=sys.stderr)
+            return EXIT_USAGE
+        reviews[args.case_id] = ReviewRecord(
+            status=args.status,
+            case_sha256=suite_build.case_sha256(case),
+            reviewer=args.reviewer,
+            notes=args.notes or "",
+        )
+        suite_build._write_json(
+            suite_dir / suite_build.REVIEW_FILE,
+            {key: review.model_dump(mode="json") for key, review in reviews.items()},
+        )
+        print(f"{args.case_id}: {args.status}")
+        return 0
+    except (OSError, ValueError, yaml.YAMLError, FrozenSuiteError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
 

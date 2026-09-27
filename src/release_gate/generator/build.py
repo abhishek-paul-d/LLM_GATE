@@ -125,7 +125,10 @@ def read_reviews(suite_dir: str | Path) -> dict[str, ReviewRecord]:
     path = Path(suite_dir) / REVIEW_FILE
     if not path.is_file():
         return {}
-    return {k: ReviewRecord.model_validate(v) for k, v in json.loads(path.read_text(encoding="utf-8")).items()}
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} must map case_id to a review record, got {type(data).__name__}")
+    return {k: ReviewRecord.model_validate(v) for k, v in data.items()}
 
 
 def _write_json(path: Path, data: object) -> None:

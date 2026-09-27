@@ -70,8 +70,8 @@ tests/fixtures/  proxy/  deploy/  .github/workflows/
 - Virtualenv: `.venv/` (Python 3.11), package installed editable. Run tests with `.venv/Scripts/python -m pytest -q`. Lint with `.venv/Scripts/python -m ruff check .` and `ruff format --check .`.
 - Gate on a saved metrics file: `.venv/Scripts/gate decide --metrics <file> --policy policies/policy_v1.yaml [--out <json>] [--report <md>]`
 - Model specs (after delegated task T008): `gate models list`, `gate models show <name>`, `gate models serve-cmd <name> --port 8001`
+- Suites: `gate suite generate --config suites/configs/<v>.yaml`, `gate suite validate|show|freeze <suite_dir>`, `gate suite review <suite_dir> --case <id> --status approved --reviewer <name>`. Exit 1 from generate/validate means the suite has issues (not HOLD). Claude never runs `show --split release`.
 - Planned CLI:
-  - `gate suite generate --seed <n>` / `gate suite validate`
   - `gate run --baseline <spec> --candidate <spec> --suite <v> --policy <v>`
   - `gate replay <run_id> [--policy <v>]`
 

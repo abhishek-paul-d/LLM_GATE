@@ -150,7 +150,7 @@ def validate_case(c: SuiteCase) -> list[Issue]:
         if not names.is_test_net(ip):
             bad("V10", f"IP {ip} is outside the RFC 5737 documentation ranges")
     for h in _URL_HOST.findall(text):
-        if not h.endswith(names.SYNTH_TLD):
+        if not (h.endswith(names.SYNTH_TLD) or (_IPV4.fullmatch(h) and names.is_test_net(h))):
             bad("V10", f"URL host {h} is not under {names.SYNTH_TLD}")
     for pattern, what in ((_REAL_TLD, "real-TLD hostname"), (_EMAIL, "email address"), (_SECRET, "secret-like string")):
         found = pattern.search(text)
@@ -218,6 +218,7 @@ def validate_suite_dir(suite_dir: str | Path) -> list[Issue]:
     try:
         manifest = read_manifest(suite_dir)
         cases = read_cases(suite_dir)
+        reviews = read_reviews(suite_dir)
     except (OSError, ValidationError, ValueError) as exc:
         return [Issue("V01", f"cannot load suite: {exc}")]
     issues = validate_cases(cases)
@@ -228,7 +229,6 @@ def validate_suite_dir(suite_dir: str | Path) -> list[Issue]:
         issues.append(Issue("S04", f"manifest says {manifest.n_cases} cases, file has {len(cases)}"))
     if any(c.suite_version != manifest.suite_version for c in cases):
         issues.append(Issue("S04", "case suite_version differs from manifest"))
-    reviews = read_reviews(suite_dir)
     for c in cases:
         rec = reviews.get(c.case_id)
         if rec is not None and rec.status != "candidate" and rec.case_sha256 != case_sha256(c):

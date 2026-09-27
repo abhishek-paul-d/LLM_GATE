@@ -9,7 +9,7 @@
     "review_by_claude": "true if Claude should check the result before it is relied on",
     "status": "pending | done (set by the implementing model) | reviewed (set only by Claude)"
   },
-  "_shared_conventions": "Repo root is D:/llm-release-gate (Windows 11). Python 3.11, pydantic v2. Source lives under src/release_gate/ (src layout). A virtualenv exists at .venv; run tests with `.venv/Scripts/python -m pytest -q` from the repo root and make sure ALL tests pass, including the existing 53 in tests/gate/. Do NOT modify anything under src/release_gate/gate/, policies/, or tests/gate/ - that code is owned by another engineer. Do not add dependencies beyond those named in the task. Use pathlib, UTF-8 file I/O, and type hints. Match the style of src/release_gate/gate/engine.py. When you finish a task set its status to 'done'. NEVER set status to 'reviewed': only Claude sets that, after its own review.",
+  "_shared_conventions": "Repo root is D:/llm-release-gate (Windows 11). Python 3.11, pydantic v2. Source lives under src/release_gate/ (src layout). A virtualenv exists at .venv; run tests with `.venv/Scripts/python -m pytest -q` from the repo root and make sure ALL tests pass, including the existing 53 in tests/gate/. Do NOT modify anything under src/release_gate/gate/, policies/, or tests/gate/ - that code is owned by another engineer. Do not add dependencies beyond those named in the task. Use pathlib, UTF-8 file I/O, and type hints. Match the style of src/release_gate/gate/engine.py. When you finish a task set its status to 'done'. NEVER set status to 'reviewed': only Claude sets that, after its own review. Never edit memory.md or CLAUDE.md; Claude owns them. Report what you did in your reply instead.",
   "tasks": [
     {
       "id": "T001",
@@ -168,7 +168,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T011",
@@ -185,7 +185,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T012",
@@ -202,7 +202,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T013",
@@ -219,7 +219,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T014",
@@ -236,7 +236,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T015",
@@ -253,7 +253,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T016",
@@ -270,7 +270,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     }
   ]
 }
