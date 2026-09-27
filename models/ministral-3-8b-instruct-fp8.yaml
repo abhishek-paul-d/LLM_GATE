@@ -1,6 +1,8 @@
 # Model spec: Ministral 3 8B Instruct (2512) served by vLLM from its FP8 checkpoint.
 # Select with:  --baseline ministral-3-8b-instruct-fp8   (name must match this file name)
 # To try another model, copy this file, rename it, and edit it. See models/README.md.
+# Needs vLLM >= 0.12 (Ministral 3 support). The Colab notebook pins vLLM 0.11.2 for A100 FP8, so this
+# spec does not serve there until the pin moves to a version that runs FP8 on an A100.
 
 spec_version: 1
 name: ministral-3-8b-instruct-fp8

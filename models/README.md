@@ -4,7 +4,7 @@ Each YAML file describes one side of a comparison: its weights, vLLM serving set
 
 ## Shipped specs
 
-All shipped specs use FP8 weights with bf16 activations. The demo pair is `llama-3.1-8b-instruct-fp8` (baseline) vs `qwen3-8b-fp8` (candidate); `ministral-3-8b-instruct-fp8` is an ungated alternative baseline.
+All shipped specs use FP8 weights with bf16 activations. The demo pair is `llama-3.1-8b-instruct-fp8` (baseline) vs `qwen3-8b-fp8` (candidate); `ministral-3-8b-instruct-fp8` is an ungated alternative baseline, but it needs vLLM >= 0.12 and the Colab notebook pins vLLM 0.11.2 (newer vLLM fails on A100 FP8).
 
 | Name | Hugging Face model | License | Gated | Notes |
 | --- | --- | --- | --- | --- |

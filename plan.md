@@ -505,6 +505,7 @@ Once that works, expand the suite, add traces, load testing, and fault injection
 
 - **Demo baseline swapped** (2026-09-28): the Hugging Face account behind `HF_TOKEN` is not yet approved for Llama 3.1, so the first run uses `mistralai/Ministral-3-8B-Instruct-2512` (spec `ministral-3-8b-instruct-fp8`, Apache-2.0, published FP8, served in Mistral's format) as baseline against `qwen3-8b-fp8`. The pair needs about 20 GB, so it runs concurrently on a 40 GB A100. Later the same day the user's Llama access was approved, so the notebook's default baseline went back to Llama; the Ministral spec stays as an ungated alternative.
 - **Revision pins** (2026-09-28): all shipped specs pin a Hugging Face commit SHA and vLLM gets the same commit as `--tokenizer-revision`. The Colab notebook refuses unpinned specs because the manifest records the revision as given.
+- **vLLM pin** (2026-09-28): the notebook installs `vllm==0.11.2`. The unpinned vLLM 0.30.0 routed online FP8 on the A100 (no native FP8) to a CUTLASS kernel that fails, and its torch.compile crashed on the same path; 0.11.x uses the weight-only Marlin fallback. All shipped specs also pass `--enforce-eager` for now, so first-run latency is eager-mode latency. Next: drop `--enforce-eager` if 0.11.2 compiles cleanly. Moving the pin needs a Colab check that FP8 still loads on the A100.
 
 ### Open
 
