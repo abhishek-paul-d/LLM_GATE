@@ -283,7 +283,7 @@
       ],
       "depends_on": [],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T018",
@@ -300,7 +300,7 @@
         "T017"
       ],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     },
     {
       "id": "T019",
@@ -316,7 +316,7 @@
         "T018"
       ],
       "review_by_claude": true,
-      "status": "pending"
+      "status": "reviewed"
     }
   ]
 }

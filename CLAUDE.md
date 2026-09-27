@@ -72,8 +72,8 @@ tests/fixtures/  proxy/  deploy/  .github/workflows/
 - Gate on a saved metrics file: `.venv/Scripts/gate decide --metrics <file> --policy policies/policy_v1.yaml [--out <json>] [--report <md>]`
 - Model specs (after delegated task T008): `gate models list`, `gate models show <name>`, `gate models serve-cmd <name> --port 8001`
 - Suites: `gate suite generate --config suites/configs/<v>.yaml`, `gate suite validate|show|freeze <suite_dir>`, `gate suite review <suite_dir> --case <id> --status approved --reviewer <name>`. Exit 1 from generate/validate means the suite has issues (not HOLD). Claude never runs `show --split release`.
-- Planned CLI (`gate run` and `gate mock serve` queued as T017–T018):
-  - `gate run --baseline <spec> --candidate <spec> --suite <v> --policy <v>`
+- Runs: `gate mock serve --persona <p> --served-model <spec name> --port <n>` (local mock endpoint, loopback only); `gate run --suite <dir> --baseline <spec> --candidate <spec> --baseline-url <url> --candidate-url <url>` writes `runs/<run_id>/` (exit 0 = saved, not a decision). Real runs use `notebooks/evaluate.ipynb` on Colab.
+- Planned CLI:
   - `gate replay <run_id> [--policy <v>]`
 
 ## Testing expectations

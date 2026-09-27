@@ -163,10 +163,10 @@ These are enforced by code and tests, not just stated:
 | 0 | Contract, policy, gate engine, `gate decide`, Markdown report, triage schema | **Done** |
 | — | Model registry (`models/*.yaml`, `gate models`) | **Done** |
 | 1 | Synthetic suite generator, validator, review/freeze, `gate suite`, 9 scenario families, `starter-v1` suite | **Code done**; starter cases await human review; full release benchmark not yet designed |
-| 2 | Runner, mock endpoint, run manifest, `gate run` / `gate replay`, Colab notebook | **In progress**: prompt, adapter, mock model, runner and manifest built; `gate run` CLI, mock HTTP server and Colab notebook queued (T017–T019); scoring, metrics and `gate replay` next |
+| 2 | Runner, mock endpoint, run manifest, `gate run` / `gate replay`, Colab notebook | **In progress**: prompt, adapter, mock model and server, runner, manifest, `gate run`, Colab notebook built; scoring, metrics and `gate replay` next |
 | 3–6 | Scorers + statistics, load tests + fault proxy, CI + Kubernetes, UI | Not started |
 
-About 3,750 lines of source code and 195 tests, all passing; ruff lint and format are clean.
+About 3,900 lines of source code and 207 tests, all passing; ruff lint and format are clean.
 
 ## 2.2 Repository map (as built)
 
@@ -178,7 +178,7 @@ suites/configs/starter-v1.yaml   suite recipe
 suites/starter-v1/               generated suite: cases.jsonl, manifest.json, review.json
 docs/examples/                   example decisions and reports (promote, hold_quality, reject_latency)
 src/release_gate/
-  cli.py                         `gate` command: decide | models | suite
+  cli.py                         `gate` command: decide | models | suite | mock | run
   gate/models.py                 data contract: Policy, RunMetrics, Decision, RuleResult
   gate/engine.py                 evaluate(metrics, policy) -> Decision  (gate v0.2.0)
   report/markdown.py             Decision + metrics -> Markdown (Jinja template)
@@ -187,11 +187,13 @@ src/release_gate/
   prompts.py                     prompt loading + sha256, message building
   adapters/openai_compat.py      async OpenAI-compatible client, per-attempt error records
   mock/model.py                  deterministic mock model with personas
+  mock/server.py                 the mock as a local HTTP server (loopback only)
   runner/                        run.py (ABBA-interleaved execution), manifest.py (run formats)
   generator/                     synthetic suite generator (Phase 1)
     rng.py  names.py  severity.py  schema.py  scenario.py  variants.py  build.py  validate.py
     families/                    9 scenario families, 2 templates each
-tests/                           gate, report, schemas, registry, generator, adapters, mock, runner, CLI
+notebooks/evaluate.ipynb         Colab batch job: serve both models, gate run, save to Drive
+tests/                           gate, report, schemas, registry, generator, adapters, mock, runner, CLI, notebook
 delegated_tasks.json             queue of simple tasks handed to a cheaper model
 ```
 
@@ -468,7 +470,7 @@ Exit 1 from `generate` and `validate` means "the suite has issues". It is a diff
 
 ## 2.7 The evaluation runner (Phase 2, in progress)
 
-What exists: everything needed to send a suite to two endpoints and save the raw evidence. Scoring, statistics, `gate run` wiring and `gate replay` come next.
+What exists: everything needed to send a suite to two endpoints and save the raw evidence, from the command line or the Colab notebook. Scoring, statistics and `gate replay` come next.
 
 ```mermaid
 flowchart LR
@@ -509,7 +511,7 @@ Backoff is deterministic (`backoff_s × 2^n`). `chat_body(spec, messages)` build
 | `flaky` | 20% of first attempts return HTTP 500; the retry succeeds |
 | `broken-json` | 30% of answers are truncated, non-JSON text |
 
-Every choice is a hash of the persona and the input, so the same request always gets the same answer. `MockBackend.transport()` plugs it into httpx in-process for tests; a real HTTP server (`gate mock serve`) is queued as T017.
+Every choice is a hash of the persona and the input, so the same request always gets the same answer. `MockBackend.transport()` plugs it into httpx in-process for tests. `gate mock serve --persona <p> --served-model <name> --port <n>` runs it as a real HTTP server (`mock/server.py`, standard library only), bound to loopback only.
 
 **Runner (`runner/run.py`).**
 1. **Preflight:** loads both specs, validates the suite (a suite with any validation issue is refused), selects the split (`release` by default), and asks each endpoint's `/models` whether it serves the spec's name. Any failure stops the run before anything is written.
@@ -526,6 +528,25 @@ Every choice is a hash of the persona and the input, so the same request always 
 
 Sequential mode (one server at a time, for pairs too large to co-host) is not implemented yet. The shipped FP8 pair runs concurrently.
 
+**`gate run`** wraps the runner: `gate run --suite <dir> --baseline <spec> --candidate <spec> --baseline-url <url> --candidate-url <url> [--split] [--run-id] [--env-file <json>]`. Exit 0 means the run was saved; it is not a release decision. Preflight, input and overwrite errors exit 4.
+
+**Local end-to-end run with mock servers:**
+
+```bash
+gate mock serve --persona reference --served-model llama-3.1-8b-instruct-fp8 --port 8001
+gate mock serve --persona regressed-quality --served-model qwen3-8b-fp8 --port 8002
+gate run --suite suites/starter-v1 --baseline llama-3.1-8b-instruct-fp8 --candidate qwen3-8b-fp8 \
+  --baseline-url http://127.0.0.1:8001/v1 --candidate-url http://127.0.0.1:8002/v1
+```
+
+**Colab notebook (`notebooks/evaluate.ipynb`).** One batch job, in this order, so a billed GPU never waits on a person or on a failure:
+1. Install the repo and vLLM, read `HF_TOKEN` from Colab secrets (never printed), and **mount Drive first**, because Drive sign-in is interactive.
+2. Refuse the pair if `fits_concurrently` says it won't fit (sequential mode doesn't exist yet), and write the environment record (GPU, driver, CUDA, torch, vLLM) to `env.json`.
+3. In one `try`/`finally`: start the baseline, wait until healthy, start the candidate, wait, then `gate run` with an explicit run id and `check=True`. The `finally` stops both servers whether the run succeeded or not.
+4. Copy `runs/<run_id>/` to Drive, then disconnect the runtime. Scoring and gating happen locally on the saved run.
+
+Servers bind `127.0.0.1`; no tunnels are used.
+
 ## 2.8 Tests
 
 | Area | What is covered |
@@ -535,8 +556,9 @@ Sequential mode (one server at a time, for pairs too large to co-host) is not im
 | `tests/schemas/` | Triage record parsing, no repair of malformed JSON |
 | `tests/registry/` | Spec loading, Qwen3 thinking guard, serve args, memory fit, error messages |
 | `tests/generator/` | RNG golden values, byte identity, committed starter suite matches the generator, label rules, category balance, leakage, config errors, a mutation test per validator code, review/freeze/stale workflow, one test per family |
-| `tests/adapters/`, `tests/mock/`, `tests/runner/` | Error classification and retries per attempt, request bodies; mock determinism and personas; runner manifest, ABBA order, retries recorded, preflight and invalid-suite refusal, no overwrite |
-| `tests/test_cli*.py` | `decide`, `models` and `suite` commands, including the exit-code contract (usage and internal errors → 4) |
+| `tests/adapters/`, `tests/mock/`, `tests/runner/` | Error classification and retries per attempt, request bodies; mock determinism and personas; mock HTTP server (loopback only, busy port refused, bad requests); runner manifest, ABBA order, retries recorded, preflight and invalid-suite refusal, no overwrite |
+| `tests/test_cli*.py` | `decide`, `models`, `suite`, `mock` and `run` commands (including `gate run` end to end against two mock HTTP servers), and the exit-code contract (usage and internal errors → 4) |
+| `tests/test_notebook.py` | Notebook structure, no outputs, no tunnels or tokens, Drive mounted before servers start, servers stopped in `finally`, explicit run id |
 
 Run with `.venv/Scripts/python -m pytest -q`. No test needs a GPU or a model server.
 
@@ -550,7 +572,7 @@ Claude Code does the design-heavy parts (gate engine, generator invariants, stat
 
 | Next | What it adds |
 |---|---|
-| **Finish the first milestone** (plan §17) | `gate run` CLI, mock server and Colab notebook (queued T017–T019); scorer v1 (schema validity, category/severity accuracy, unsafe-command allowlist, injection compliance); paired bootstrap statistics; `metrics.json`; `gate replay` |
+| **Finish the first milestone** (plan §17) | Scorer v1 (schema validity, category/severity accuracy, unsafe-command allowlist, injection compliance); paired bootstrap statistics; `metrics.json`; `gate replay` |
 | **Full release benchmark** | After the milestone: a suite config over all 9 families and 7 variants with more cases for protected slices (`cases_per_variant`); human review; freeze |
 | **Sequential execution mode** | One vLLM server at a time for pairs too large to co-host |
 | **Phase 3: scorers + stats** | Schema/field scorers, unsupported-claim entity extraction, read-only command allowlist, injection-compliance check, per-slice aggregation, paired bootstrap + McNemar → `metrics.json` |

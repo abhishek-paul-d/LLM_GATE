@@ -1,6 +1,7 @@
 """Command-line interface for evaluating saved release metrics and synthetic suites.
 
 Suite validation exit code 1 means the suite has issues; it is not a HOLD decision.
+Exit 0 from ``gate run`` means the run completed and was saved; it is not a release decision.
 """
 
 from __future__ import annotations
@@ -28,7 +29,10 @@ from release_gate.generator import (
 )
 from release_gate.generator import build as suite_build
 from release_gate.generator.schema import ReviewRecord
+from release_gate.mock import PERSONAS, MockBackend, make_server
 from release_gate.report import render_markdown
+from release_gate.runner import RunConfig, RunError
+from release_gate.runner import run as run_evaluation
 
 EXIT_USAGE = 4
 
@@ -89,13 +93,44 @@ def main(argv: list[str] | None = None) -> int:
     suite_review_parser.add_argument("--reviewer", required=True)
     suite_review_parser.add_argument("--notes", default="")
 
+    mock_parser = subparsers.add_parser("mock", help="run a local mock model server")
+    mock_subparsers = mock_parser.add_subparsers(dest="mock_command", required=True, parser_class=ExitUsageArgumentParser)
+    mock_serve_parser = mock_subparsers.add_parser("serve", help="serve one deterministic mock persona")
+    mock_serve_parser.add_argument("--persona", choices=sorted(PERSONAS), required=True)
+    mock_serve_parser.add_argument("--served-model", required=True)
+    mock_serve_parser.add_argument("--port", type=int, default=8001)
+    mock_serve_parser.add_argument("--host", default="127.0.0.1")
+    mock_serve_parser.add_argument("--latency-scale", type=_nonnegative_float, default=1.0)
+
+    run_parser = subparsers.add_parser("run", help="run a suite against baseline and candidate endpoints")
+    run_parser.add_argument("--suite", required=True)
+    run_parser.add_argument("--split", choices=("release", "dev"), default="release")
+    run_parser.add_argument("--prompt", default="prompts/triage-v1.yaml")
+    run_parser.add_argument("--baseline", required=True)
+    run_parser.add_argument("--candidate", required=True)
+    run_parser.add_argument("--baseline-url", required=True)
+    run_parser.add_argument("--candidate-url", required=True)
+    run_parser.add_argument("--models-dir", type=Path, default=registry.DEFAULT_MODELS_DIR)
+    run_parser.add_argument("--concurrency", type=int, default=4)
+    run_parser.add_argument("--timeout", type=float, default=60.0)
+    run_parser.add_argument("--max-retries", type=int, default=1)
+    run_parser.add_argument("--warmup", type=int, default=2)
+    run_parser.add_argument("--runs-root", type=Path, default=Path("runs"))
+    run_parser.add_argument("--run-id")
+    run_parser.add_argument("--env-file", type=Path)
+
     args = parser.parse_args(argv)
-    if args.command in ("models", "suite"):
-        handler = _run_models_command if args.command == "models" else _run_suite_command
+    if args.command in ("models", "suite", "mock", "run"):
+        handlers = {
+            "models": _run_models_command,
+            "suite": _run_suite_command,
+            "mock": _run_mock_command,
+            "run": _run_command,
+        }
         # Expected failures are handled inside the handler; this keeps an unexpected one from
         # escaping with exit 1, which CI would read as HOLD.
         try:
-            return handler(args)
+            return handlers[args.command](args)
         except Exception as exc:  # noqa: BLE001 - exit-code contract must hold for every failure
             print(f"error: internal error: {type(exc).__name__}: {exc}", file=sys.stderr)
             return EXIT_USAGE
@@ -125,6 +160,71 @@ def main(argv: list[str] | None = None) -> int:
         print(decision_json, end="")
     print(f"{decision.outcome.value} (exit {decision.exit_code}): {decision.reason}", file=sys.stderr)
     return decision.exit_code
+
+
+def _nonnegative_float(value: str) -> float:
+    parsed = float(value)
+    if parsed < 0:
+        raise argparse.ArgumentTypeError("must be greater than or equal to zero")
+    return parsed
+
+
+def _run_mock_command(args: argparse.Namespace) -> int:
+    persona = PERSONAS[args.persona]
+    scaled_persona = persona.model_copy(
+        update={
+            "base_latency_ms": persona.base_latency_ms * args.latency_scale,
+            "jitter_ms": persona.jitter_ms * args.latency_scale,
+        }
+    )
+    backend = MockBackend(scaled_persona, args.served_model)
+    try:
+        server = make_server(backend, host=args.host, port=args.port)
+    except (OSError, ValueError) as exc:  # port in use, non-loopback host
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    print(f"mock {args.persona} serving {args.served_model} on http://{args.host}:{args.port}/v1", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+def _run_command(args: argparse.Namespace) -> int:
+    try:
+        environment_extra = {}
+        if args.env_file is not None:
+            loaded = json.loads(args.env_file.read_text(encoding="utf-8"))
+            if not isinstance(loaded, dict) or any(
+                not isinstance(key, str) or not isinstance(value, str) for key, value in loaded.items()
+            ):
+                raise ValueError("environment file must be a JSON object with string keys and values")
+            environment_extra = loaded
+        config = RunConfig(
+            suite_dir=str(args.suite),
+            split=args.split,
+            prompt=str(args.prompt),
+            baseline=args.baseline,
+            candidate=args.candidate,
+            baseline_url=args.baseline_url,
+            candidate_url=args.candidate_url,
+            models_dir=str(args.models_dir),
+            concurrency=args.concurrency,
+            timeout_s=args.timeout,
+            max_retries=args.max_retries,
+            warmup_requests=args.warmup,
+            environment_extra=environment_extra,
+        )
+        run_dir = run_evaluation(config, runs_root=args.runs_root, run_id=args.run_id)
+        n_results = len((run_dir / "results.jsonl").read_text(encoding="utf-8").splitlines())
+        print(f"wrote {run_dir} ({n_results} results)")
+        return 0
+    except (OSError, ValueError, yaml.YAMLError, RunError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
 
 
 def _run_models_command(args: argparse.Namespace) -> int:

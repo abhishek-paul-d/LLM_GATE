@@ -369,7 +369,7 @@ The report should include:
 
 ### Phase 2 — Evaluation runner
 
-**Status (2026-09-27):** built: `prompts/triage-v1.yaml`, OpenAI-compatible adapter with per-attempt error records, deterministic mock model with personas, runner with ABBA-interleaved dispatch, run manifest. Queued: mock HTTP server, `gate run` CLI, Colab notebook (T017–T019). Next: scorer v1, statistics, `metrics.json`, `gate replay` (first milestone, §17). Sequential execution mode is not implemented yet.
+**Status (2026-09-27):** built: `prompts/triage-v1.yaml`, OpenAI-compatible adapter with per-attempt error records, deterministic mock model with personas, runner with ABBA-interleaved dispatch, run manifest, mock HTTP server (`gate mock serve`), `gate run` CLI, Colab notebook. Next: scorer v1, statistics, `metrics.json`, `gate replay` (first milestone, §17). Sequential execution mode is not implemented yet.
 
 **Work:** Build model adapters and the run manifest, call baseline and candidate on matched cases (interleaved when they share hardware), persist raw responses and case-level score results, and report failures clearly. Implement the run-validity checks. Build a local mock OpenAI-compatible endpoint for development. Build the Colab notebook that starts two vLLM servers, runs the suite, and saves the run directory to Google Drive.
 
