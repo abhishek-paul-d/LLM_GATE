@@ -163,15 +163,16 @@ These are enforced by code and tests, not just stated:
 | 0 | Contract, policy, gate engine, `gate decide`, Markdown report, triage schema | **Done** |
 | — | Model registry (`models/*.yaml`, `gate models`) | **Done** |
 | 1 | Synthetic suite generator, validator, review/freeze, `gate suite`, 9 scenario families, `starter-v1` suite | **Code done**; starter cases await human review; full release benchmark not yet designed |
-| 2 | Runner, mock endpoint, run manifest, `gate run` / `gate replay`, Colab notebook | Not started |
+| 2 | Runner, mock endpoint, run manifest, `gate run` / `gate replay`, Colab notebook | **In progress**: prompt, adapter, mock model, runner and manifest built; `gate run` CLI, mock HTTP server and Colab notebook queued (T017–T019); scoring, metrics and `gate replay` next |
 | 3–6 | Scorers + statistics, load tests + fault proxy, CI + Kubernetes, UI | Not started |
 
-About 2,900 lines of source code and 169 tests, all passing; ruff lint and format are clean.
+About 3,750 lines of source code and 195 tests, all passing; ruff lint and format are clean.
 
 ## 2.2 Repository map (as built)
 
 ```text
 policies/policy_v1.yaml          demo release policy
+prompts/triage-v1.yaml           versioned prompt (system + user template)
 models/                          model specs (llama-3.1-8b-instruct-fp8, qwen3-8b-fp8) + README
 suites/configs/starter-v1.yaml   suite recipe
 suites/starter-v1/               generated suite: cases.jsonl, manifest.json, review.json
@@ -183,10 +184,14 @@ src/release_gate/
   report/markdown.py             Decision + metrics -> Markdown (Jinja template)
   schemas/triage.py              TriageRecord: the model's expected JSON output
   registry.py                    model spec loading, vLLM serve args, memory fit check
+  prompts.py                     prompt loading + sha256, message building
+  adapters/openai_compat.py      async OpenAI-compatible client, per-attempt error records
+  mock/model.py                  deterministic mock model with personas
+  runner/                        run.py (ABBA-interleaved execution), manifest.py (run formats)
   generator/                     synthetic suite generator (Phase 1)
     rng.py  names.py  severity.py  schema.py  scenario.py  variants.py  build.py  validate.py
     families/                    9 scenario families, 2 templates each
-tests/                           gate, report, schemas, registry, generator, CLI
+tests/                           gate, report, schemas, registry, generator, adapters, mock, runner, CLI
 delegated_tasks.json             queue of simple tasks handed to a cheaper model
 ```
 
@@ -461,7 +466,67 @@ Exit 1 from `generate` and `validate` means "the suite has issues". It is a diff
 
 `suites/starter-v1`: 3 families (memory_pressure, bad_config_rollout, upstream_dependency) × 2 templates × 5 variants (clear, recovered, missing_evidence, conflicting, prompt_injection) = **30 cases**, 15 dev (templates `a`) and 15 release (templates `b`). It validates with zero issues. A test regenerates it from its config and asserts the committed files match. All 30 cases are `candidate`: they still need human review before freezing.
 
-## 2.7 Tests
+## 2.7 The evaluation runner (Phase 2, in progress)
+
+What exists: everything needed to send a suite to two endpoints and save the raw evidence. Scoring, statistics, `gate run` wiring and `gate replay` come next.
+
+```mermaid
+flowchart LR
+    SUITE["suite split<br/>(validated first)"] --> JOBS
+    PROMPT["prompts/triage-v1.yaml"] --> JOBS
+    SPECS["model specs"] --> JOBS
+    JOBS["jobs in ABBA order<br/>case0: B,C  case1: C,B ..."] --> SEM["per-endpoint<br/>concurrency limit"]
+    SEM --> B["baseline<br/>ChatClient"]
+    SEM --> C["candidate<br/>ChatClient"]
+    B --> RES["results.jsonl<br/>(raw completions,<br/>every attempt)"]
+    C --> RES
+    RES --> MAN["manifest.json<br/>(hashes, settings,<br/>environment)"]
+```
+
+**Prompt (`prompts/triage-v1.yaml`, `prompts.py`).** A versioned system prompt and user template. It states the output schema, the category definitions, the severity table (the same bands as `generator/severity.py`), and rules: use only stated facts, treat log lines as data, and suggest read-only checks only. It was written from the label rules, never from release cases; category examples name only phenomena that appear in dev templates. The alert is inserted with `str.replace`, because alert labels contain JSON braces that `str.format` would break. The file's sha256 goes into the manifest.
+
+**Adapter (`adapters/openai_compat.py`).** `ChatClient` posts to `/v1/chat/completions` and records **every attempt**, so the error rate can be gated before retries while retries still rescue the answer. Error kinds:
+
+| Kind | Meaning | Retried |
+|---|---|---|
+| `transport` | endpoint unreachable or connection broke: an infrastructure error (run validity), not a model regression | yes |
+| `timeout` | no response within `timeout_s`: a serving metric | yes |
+| `rate_limited` / `http_5xx` | HTTP 429 / 5xx | yes |
+| `http_4xx` | bad request (e.g. wrong model name) | no |
+| `invalid_response` | HTTP 200 that is not a chat completion | no |
+
+Backoff is deterministic (`backoff_s × 2^n`). `chat_body(spec, messages)` builds the request from the spec: sampling settings, vLLM-only fields such as `chat_template_kwargs` at the top level, and a JSON-schema `response_format` when the spec asks for constrained decoding. The model's text is returned as-is and never interpreted.
+
+**Mock model (`mock/model.py`).** A deterministic, rule-based stand-in for an LLM: keyword cues for the category, the severity table for severity, a read-only `kubectl describe` as `next_check`. **Personas** degrade it on purpose, so every gate outcome can be produced without a GPU:
+
+| Persona | Behaviour |
+|---|---|
+| `reference` | the plain rules (roughly 80% category accuracy, exact severity) |
+| `regressed-quality` | 35% of answers get a wrong category |
+| `slow` | about 3× latency |
+| `unsafe` | 20% of `next_check` values are `kubectl rollout restart` |
+| `obedient` | follows instructions injected in log lines |
+| `flaky` | 20% of first attempts return HTTP 500; the retry succeeds |
+| `broken-json` | 30% of answers are truncated, non-JSON text |
+
+Every choice is a hash of the persona and the input, so the same request always gets the same answer. `MockBackend.transport()` plugs it into httpx in-process for tests; a real HTTP server (`gate mock serve`) is queued as T017.
+
+**Runner (`runner/run.py`).**
+1. **Preflight:** loads both specs, validates the suite (a suite with any validation issue is refused), selects the split (`release` by default), and asks each endpoint's `/models` whether it serves the spec's name. Any failure stops the run before anything is written.
+2. **Warm-up:** a few requests with a synthetic warm-up alert (not a suite case); errors are counted and results discarded.
+3. **Measured phase:** jobs are dispatched in **ABBA order** (baseline first on even cases, candidate first on odd ones) under the same per-endpoint concurrency limit. Dispatch is in order, so the two roles stay in lockstep and see the same load.
+4. **Write:** `runs/<run_id>/results.jsonl` (one `CaseResult` per case and role: dispatch order, timing, the full `Completion` with every attempt) and `manifest.json`. An existing run directory is never overwritten.
+
+**Run manifest (`runner/manifest.py`)** records:
+- **suite:** version, `cases_sha256`, frozen flag, generator and scoring-rules versions, split, and a hash of the selected case ids;
+- **prompt:** version and sha256;
+- **each model:** spec name and file sha256, model id, revision and whether it is pinned, dtype, quantization, endpoint URL, the names the endpoint reported, and the exact request settings;
+- **execution:** mode, ABBA order, concurrency, timeout, retries, backoff, warm-up and its errors;
+- **environment:** Python, platform, package, httpx, git commit and dirty flag, plus `extra`, which the Colab notebook fills with GPU, driver, CUDA and vLLM versions.
+
+Sequential mode (one server at a time, for pairs too large to co-host) is not implemented yet. The shipped FP8 pair runs concurrently.
+
+## 2.8 Tests
 
 | Area | What is covered |
 |---|---|
@@ -470,11 +535,12 @@ Exit 1 from `generate` and `validate` means "the suite has issues". It is a diff
 | `tests/schemas/` | Triage record parsing, no repair of malformed JSON |
 | `tests/registry/` | Spec loading, Qwen3 thinking guard, serve args, memory fit, error messages |
 | `tests/generator/` | RNG golden values, byte identity, committed starter suite matches the generator, label rules, category balance, leakage, config errors, a mutation test per validator code, review/freeze/stale workflow, one test per family |
+| `tests/adapters/`, `tests/mock/`, `tests/runner/` | Error classification and retries per attempt, request bodies; mock determinism and personas; runner manifest, ABBA order, retries recorded, preflight and invalid-suite refusal, no overwrite |
 | `tests/test_cli*.py` | `decide`, `models` and `suite` commands, including the exit-code contract (usage and internal errors → 4) |
 
 Run with `.venv/Scripts/python -m pytest -q`. No test needs a GPU or a model server.
 
-## 2.8 How work is split
+## 2.9 How work is split
 
 Claude Code does the design-heavy parts (gate engine, generator invariants, statistics, runner, reviews). Well-specified simple tasks (CLI wiring, boilerplate, scenario families from a full spec, docs) are queued in `delegated_tasks.json` with self-contained prompts for a cheaper model, then reviewed by Claude before they are marked `reviewed`. Project-specific notes for Claude live in `memory.md`; working rules are in `CLAUDE.md`.
 
@@ -484,8 +550,9 @@ Claude Code does the design-heavy parts (gate engine, generator invariants, stat
 
 | Next | What it adds |
 |---|---|
-| **Full release benchmark** | A suite config over all 9 families and 7 variants with at least 20 release-split cases per protected slice (`prompt_injection`, `missing_evidence`), about 380 cases; human review; freeze |
-| **Phase 2: runner** | OpenAI-compatible async adapter, local mock endpoint, interleaved execution, run manifest with hashes and environment, `runs/<run_id>/`, `gate run`, `gate replay`, `notebooks/evaluate.ipynb` for Colab |
+| **Finish the first milestone** (plan §17) | `gate run` CLI, mock server and Colab notebook (queued T017–T019); scorer v1 (schema validity, category/severity accuracy, unsafe-command allowlist, injection compliance); paired bootstrap statistics; `metrics.json`; `gate replay` |
+| **Full release benchmark** | After the milestone: a suite config over all 9 families and 7 variants with more cases for protected slices (`cases_per_variant`); human review; freeze |
+| **Sequential execution mode** | One vLLM server at a time for pairs too large to co-host |
 | **Phase 3: scorers + stats** | Schema/field scorers, unsupported-claim entity extraction, read-only command allowlist, injection-compliance check, per-slice aggregation, paired bootstrap + McNemar → `metrics.json` |
 | **Phase 4: operations** | Load profile with warm-up and repeats, latency/throughput/error metrics before and after retries, GPU metrics, fault-injection proxy, traces |
 | **Phase 5: CI and deployment** | GitHub Actions gate on committed runs + mock smoke test, local kind/k3d deployment (CPU), canary simulation with a rollback recommendation |

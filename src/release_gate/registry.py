@@ -148,6 +148,11 @@ def _resolve(ref: str | Path, models_dir: Path) -> Path:
     return models_dir / f"{ref_str}.yaml"
 
 
+def spec_path(ref: str | Path, models_dir: str | Path = DEFAULT_MODELS_DIR) -> Path:
+    """The file a spec name or path refers to (hashed into run manifests)."""
+    return _resolve(ref, Path(models_dir))
+
+
 def list_model_specs(models_dir: str | Path = DEFAULT_MODELS_DIR) -> list[str]:
     """Names of the specs in ``models_dir``, sorted. A missing directory is an error, not an empty registry."""
     models_dir = Path(models_dir)

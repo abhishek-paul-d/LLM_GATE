@@ -9,7 +9,7 @@ LLM Release Gate compares a **candidate** LLM configuration against the approved
 - The **gate is the product**. Alert-to-JSON triage is only the demo workload.
 - `architecture.md` explains how the system and the built code work; keep it current when a component lands or changes.
 - `plan.md` is the source of truth for scope, metrics, policy, and phases. Read the relevant section before changing behavior; update `plan.md` when a design decision changes.
-- Current status: Phase 0 done; **Phase 1 (synthetic generator)** in progress. `memory.md` has the latest state. Open decisions are listed in `plan.md` §18. Don't settle them silently; ask.
+- Current status: Phases 0–1 code done (starter suite awaits human review); **Phase 2 (runner)** in progress toward the first milestone (plan §17). `memory.md` has the latest state. Open decisions are listed in `plan.md` §18. Don't settle them silently; ask.
 - Generator rules: labels are derived, never set by hand (severity from the symptom, category from the causes). Anything a variant borrows must come from the same split. Every change must keep `validate_cases` at zero issues and the cross-split similarity margin. Never read release-split cases while designing prompts or scorers.
 
 ## Non-negotiable rules
@@ -72,7 +72,7 @@ tests/fixtures/  proxy/  deploy/  .github/workflows/
 - Gate on a saved metrics file: `.venv/Scripts/gate decide --metrics <file> --policy policies/policy_v1.yaml [--out <json>] [--report <md>]`
 - Model specs (after delegated task T008): `gate models list`, `gate models show <name>`, `gate models serve-cmd <name> --port 8001`
 - Suites: `gate suite generate --config suites/configs/<v>.yaml`, `gate suite validate|show|freeze <suite_dir>`, `gate suite review <suite_dir> --case <id> --status approved --reviewer <name>`. Exit 1 from generate/validate means the suite has issues (not HOLD). Claude never runs `show --split release`.
-- Planned CLI:
+- Planned CLI (`gate run` and `gate mock serve` queued as T017–T018):
   - `gate run --baseline <spec> --candidate <spec> --suite <v> --policy <v>`
   - `gate replay <run_id> [--policy <v>]`
 
