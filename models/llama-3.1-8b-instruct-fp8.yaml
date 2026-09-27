@@ -21,7 +21,11 @@ serving:
   max_model_len: 8192     # triage prompts are short; a smaller context leaves more KV cache
   gpu_memory_utilization: null   # chosen by the runner from the execution mode
   weights_gb: 9.2         # ~7B params at 1 byte + embeddings/lm_head kept in bf16
-  extra_args: []
+  # --enforce-eager: skip torch.compile and CUDA graphs. On Colab (2026-09-28) the newest vLLM's
+  # compile step crashed on the A100 FP8 path (InductorError: auto_functionalized was not removed).
+  # Slower decoding, so latency is higher than a compiled server; all shipped specs use it so a
+  # pair is served the same way. Drop it once a pinned vLLM version compiles cleanly.
+  extra_args: ["--enforce-eager"]
 
 request:
   temperature: 0.0

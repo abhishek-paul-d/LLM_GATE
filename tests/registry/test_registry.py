@@ -190,6 +190,12 @@ def test_revision_pinning():
     assert ModelSpec.model_validate(doc).revision_pinned
 
 
+@pytest.mark.parametrize("name", ["llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"])
+def test_shipped_specs_serve_eager(name):
+    # A pair must be served the same way, or latency compares compiled against eager decoding.
+    assert "--enforce-eager" in load_model_spec(name, MODELS).serving.extra_args
+
+
 def test_shipped_specs_are_pinned():
     # The Colab notebook refuses unpinned specs; catch it here instead of in a paid session.
     for name in ("llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"):
@@ -210,6 +216,7 @@ def test_vllm_serve_args():
         "--quantization", "fp8",
         "--gpu-memory-utilization", "0.9",
         "--seed", "1234",
+        "--enforce-eager",
     ]  # fmt: skip
 
 

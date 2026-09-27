@@ -23,7 +23,11 @@ serving:
   weights_gb: 10.4        # 7.4B params in FP8 + 1.5B in bf16 (vision tower, embeddings, lm_head)
   # The model card's vLLM command: Mistral's own tokenizer (tekken.json), config (params.json) and
   # weights (consolidated.safetensors), so only one copy of the weights is downloaded.
-  extra_args: ["--tokenizer-mode", "mistral", "--config-format", "mistral", "--load-format", "mistral"]
+  # --enforce-eager: skip torch.compile and CUDA graphs. On Colab (2026-09-28) the newest vLLM's
+  # compile step crashed on the A100 FP8 path (InductorError: auto_functionalized was not removed).
+  # Slower decoding, so latency is higher than a compiled server; all shipped specs use it so a
+  # pair is served the same way. Drop it once a pinned vLLM version compiles cleanly.
+  extra_args: ["--tokenizer-mode", "mistral", "--config-format", "mistral", "--load-format", "mistral", "--enforce-eager"]
 
 request:
   temperature: 0.0        # the model card recommends below 0.1
