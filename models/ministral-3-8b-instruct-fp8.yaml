@@ -1,0 +1,34 @@
+# Model spec: Ministral 3 8B Instruct (2512) served by vLLM from its FP8 checkpoint.
+# Select with:  --baseline ministral-3-8b-instruct-fp8   (name must match this file name)
+# To try another model, copy this file, rename it, and edit it. See models/README.md.
+
+spec_version: 1
+name: ministral-3-8b-instruct-fp8
+description: Mistral Ministral 3 8B Instruct 2512, FP8 checkpoint as published, bf16 activations.
+
+model:
+  id: mistralai/Ministral-3-8B-Instruct-2512
+  revision: 5b26027e7b19eeb4b7352e1fed3926375dd2cb4d  # Hugging Face commit, pinned 2026-09-28
+  license: apache-2.0
+  gated: false
+
+serving:
+  backend: vllm
+  dtype: bfloat16         # activation/compute precision; weight precision is set by quantization
+  # Mistral publishes this model with FP8 weights (vision tower, projector and lm_head stay bf16),
+  # so vLLM loads them as they are. On an A100 (no native FP8) this runs as weight-only FP8 (W8A16).
+  quantization: fp8
+  max_model_len: 8192     # triage prompts are short; a smaller context leaves more KV cache
+  gpu_memory_utilization: null   # chosen by the runner from the execution mode
+  weights_gb: 10.4        # 7.4B params in FP8 + 1.5B in bf16 (vision tower, embeddings, lm_head)
+  # The model card's vLLM command: Mistral's own tokenizer (tekken.json), config (params.json) and
+  # weights (consolidated.safetensors), so only one copy of the weights is downloaded.
+  extra_args: ["--tokenizer-mode", "mistral", "--config-format", "mistral", "--load-format", "mistral"]
+
+request:
+  temperature: 0.0        # the model card recommends below 0.1
+  top_p: 1.0
+  max_tokens: 512
+  seed: 1234
+  structured_output: none
+  chat_template_kwargs: {}

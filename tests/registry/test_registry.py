@@ -29,10 +29,10 @@ def _write(tmp_path: Path, doc: dict[str, Any], stem: str | None = None) -> Path
 
 
 def test_shipped_specs_listed():
-    assert list_model_specs(MODELS) == ["llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"]
+    assert list_model_specs(MODELS) == ["llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"]
 
 
-@pytest.mark.parametrize("name", ["llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"])
+@pytest.mark.parametrize("name", ["llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"])
 def test_shipped_specs_load_by_name_and_path(name):
     by_name = load_model_spec(name, MODELS)
     by_path = load_model_spec(MODELS / f"{name}.yaml")
@@ -45,6 +45,14 @@ def test_llama_spec():
     assert (s.model.id, s.model.gated, s.request.temperature) == ("meta-llama/Llama-3.1-8B-Instruct", True, 0.0)
 
 
+def test_ministral_spec_uses_mistral_format():
+    s = load_model_spec("ministral-3-8b-instruct-fp8", MODELS)
+    assert (s.model.id, s.model.gated) == ("mistralai/Ministral-3-8B-Instruct-2512", False)
+    args = s.vllm_serve_args(port=8001)
+    for flag in ("--tokenizer-mode", "--config-format", "--load-format"):
+        assert args[args.index(flag) + 1] == "mistral"
+
+
 def test_qwen_spec_disables_thinking():
     s = load_model_spec("qwen3-8b-fp8", MODELS)
     assert s.model.id == "Qwen/Qwen3-8B"
@@ -52,21 +60,29 @@ def test_qwen_spec_disables_thinking():
     assert s.request_params()["extra_body"] == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
-@pytest.mark.parametrize("name", ["llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"])
+@pytest.mark.parametrize("name", ["llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"])
 def test_shipped_specs_use_fp8_weights_with_bf16_activations(name):
     s = load_model_spec(name, MODELS)
     assert (s.serving.quantization, s.serving.dtype) == ("fp8", "bfloat16")
-    assert s.serving.weights_gb < 10
+    assert s.serving.weights_gb < 11
 
 
-def test_fp8_pair_fits_concurrently_on_40gb():
-    pair = [load_model_spec(n, MODELS) for n in list_model_specs(MODELS)]
+PAIRS = [
+    ("ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"),  # the current demo pair
+    ("llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"),
+]
+
+
+@pytest.mark.parametrize("names", PAIRS)
+def test_fp8_pair_fits_concurrently_on_40gb(names):
+    pair = [load_model_spec(n, MODELS) for n in names]
     assert fits_concurrently(pair, gpu_memory_gb=40)
 
 
-def test_bf16_pair_would_need_sequential_on_40gb():
+@pytest.mark.parametrize("names", PAIRS)
+def test_bf16_pair_would_need_sequential_on_40gb(names):
     pair = []
-    for name in list_model_specs(MODELS):
+    for name in names:
         doc = _spec_doc(name)
         doc["serving"].update(quantization=None, weights_gb=16.4)
         pair.append(ModelSpec.model_validate(doc))
@@ -176,7 +192,7 @@ def test_revision_pinning():
 
 def test_shipped_specs_are_pinned():
     # The Colab notebook refuses unpinned specs; catch it here instead of in a paid session.
-    for name in ("llama-3.1-8b-instruct-fp8", "qwen3-8b-fp8"):
+    for name in ("llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"):
         assert load_model_spec(name, MODELS).revision_pinned, name
 
 

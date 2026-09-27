@@ -15,11 +15,14 @@ def test_models_list_prints_shipped_specs(capsys: pytest.CaptureFixture[str]) ->
 
     assert result == 0
     lines = captured.out.splitlines()
-    assert len(lines) == 2
+    assert len(lines) == 3
     assert lines[0].startswith(
         "llama-3.1-8b-instruct-fp8\tmeta-llama/Llama-3.1-8B-Instruct\t0e9e39f249a16976918f6564b8830bc894c89659\tpinned\tgated"
     )
-    assert lines[1].startswith("qwen3-8b-fp8\tQwen/Qwen3-8B\tb968826d9c46dd6066d109eabc6255188de91218\tpinned\topen")
+    assert lines[1].startswith(
+        "ministral-3-8b-instruct-fp8\tmistralai/Ministral-3-8B-Instruct-2512\t5b26027e7b19eeb4b7352e1fed3926375dd2cb4d\tpinned\topen"
+    )
+    assert lines[2].startswith("qwen3-8b-fp8\tQwen/Qwen3-8B\tb968826d9c46dd6066d109eabc6255188de91218\tpinned\topen")
     assert captured.err == ""
 
 

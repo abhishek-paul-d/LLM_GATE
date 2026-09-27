@@ -283,7 +283,7 @@ Rules for Colab runs:
   - **Sequential:** one server at a time on the whole GPU (`≈ 0.90`), baseline then candidate, each with its own warm-up. Needed when combined weights are too large, e.g. two 8B bf16 models on a 40 GB A100 (about 32 GB of weights). There is no contention, but it is exposed to drift within the session, so the order is recorded and repeated load runs alternate it (baseline→candidate, then candidate→baseline).
   The mode is recorded in the manifest.
 - **The manifest records the environment:** GPU model and memory (Colab can assign a 40 GB or 80 GB A100), driver and CUDA versions, vLLM version, and model digests. Environment differences show up in the report and, through the baseline replay check, in run validity.
-- **Model specs:** each model configuration is an editable YAML file in `models/` (`src/release_gate/registry.py`), selected by name (`--baseline llama-3.1-8b-instruct-fp8 --candidate qwen3-8b-fp8`). A spec pins the Hugging Face id and revision, vLLM serving settings, approximate weight memory, and default request settings. To use another model, copy a spec and edit it. Prompt and suite are chosen per run, not in the spec.
+- **Model specs:** each model configuration is an editable YAML file in `models/` (`src/release_gate/registry.py`), selected by name (`--baseline ministral-3-8b-instruct-fp8 --candidate qwen3-8b-fp8`). A spec pins the Hugging Face id and revision, vLLM serving settings, approximate weight memory, and default request settings. To use another model, copy a spec and edit it. Prompt and suite are chosen per run, not in the spec.
 - **Model size and precision:** up to about 8B parameters. Shipped specs use **FP8 weights** (`quantization: fp8`, quantized by vLLM at load time from the original checkpoint) with bf16 activations. The A100 has no native FP8, so vLLM runs weight-only FP8 (W8A16): weight memory roughly halves (~9 GB per 8B model) with a modest speed gain. `dtype` only sets activation precision, and fp16 saves no memory over bf16. 4-bit AWQ/GPTQ needs separately published checkpoints and is a possible later variant.
 - **Secrets:** gated models (Llama) need the license accepted on Hugging Face and a Colab secret `HF_TOKEN`. Tokens never go in specs or the repository.
 - **Cross-family comparisons:** different model families use different tokenizers, so token counts are reported but not compared across baseline and candidate. Cost uses the hourly hardware model, which is tokenizer-independent.
@@ -503,10 +503,12 @@ Once that works, expand the suite, add traces, load testing, and fault injection
 
 - **Demo models** (2026-09-27): baseline `meta-llama/Llama-3.1-8B-Instruct` (spec `llama-3.1-8b-instruct-fp8`, gated, Llama 3.1 Community License) and candidate `Qwen/Qwen3-8B` (spec `qwen3-8b-fp8`, Apache-2.0, thinking disabled). Both use FP8 weights so the pair runs concurrently on a 40 GB A100. Models are editable through the spec registry in `models/`. Swapping a model means adding or editing a YAML file, not changing code.
 
+- **Demo baseline swapped** (2026-09-28): the Hugging Face account behind `HF_TOKEN` is not yet approved for Llama 3.1, so the first run uses `mistralai/Ministral-3-8B-Instruct-2512` (spec `ministral-3-8b-instruct-fp8`, Apache-2.0, published FP8, served in Mistral's format) as baseline against `qwen3-8b-fp8`. The pair needs about 20 GB, so it runs concurrently on a 40 GB A100. The Llama spec stays for a later run.
+- **Revision pins** (2026-09-28): all shipped specs pin a Hugging Face commit SHA and vLLM gets the same commit as `--tokenizer-revision`. The Colab notebook refuses unpinned specs because the manifest records the revision as given.
+
 ### Open
 
 - **Candidate variants beyond the model swap:** prompt v2, bf16 vs FP8 of the same model (a precision-change release), 4-bit AWQ specs, a Qwen3 thinking-mode spec. Each is just another spec or prompt version.
-- **Revision pins:** replace `revision: main` with commit SHAs before the first release-benchmark run.
 - **Sampling mode:** temperature 0 for all runs, or temperature > 0 with `k` repeats per case.
 - **Structured output:** whether constrained JSON decoding is allowed, and whether baseline and candidate must use the same mode.
 - **Accuracy margin vs. suite size** (raised 2026-09-27): with ~200–400 release cases the paired accuracy CI is about ±5 points (measured: ±5.7 at n = 400), so `max_accuracy_drop: 0.02` would HOLD almost every comparison between two different models. Either raise the margin (e.g. 0.05) or plan a much larger reviewed suite.

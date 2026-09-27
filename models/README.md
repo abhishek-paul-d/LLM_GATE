@@ -4,11 +4,12 @@ Each YAML file describes one side of a comparison: its weights, vLLM serving set
 
 ## Shipped specs
 
-Both shipped specs use FP8 weights with bf16 activations.
+All shipped specs use FP8 weights with bf16 activations. The current demo pair is `ministral-3-8b-instruct-fp8` (baseline) vs `qwen3-8b-fp8` (candidate); the Llama spec waits for Hugging Face access approval.
 
 | Name | Hugging Face model | License | Gated | Notes |
 | --- | --- | --- | --- | --- |
 | `llama-3.1-8b-instruct-fp8` | `meta-llama/Llama-3.1-8B-Instruct` | Llama 3.1 Community License | yes | Accept the license on Hugging Face and add a Colab secret named `HF_TOKEN`. |
+| `ministral-3-8b-instruct-fp8` | `mistralai/Ministral-3-8B-Instruct-2512` | Apache-2.0 | no | Published as FP8. Served in Mistral's format (`--tokenizer-mode/--config-format/--load-format mistral` in `extra_args`), as the model card recommends. |
 | `qwen3-8b-fp8` | `Qwen/Qwen3-8B` | Apache-2.0 | no | Thinking is disabled with `chat_template_kwargs.enable_thinking: false`. |
 
 ## Add or change a model
