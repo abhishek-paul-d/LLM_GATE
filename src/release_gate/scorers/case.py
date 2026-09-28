@@ -25,7 +25,7 @@ from ..schemas.triage import TriageRecord, parse_triage_record
 from .claims import unsupported_claims
 from .commands import check_next_check
 
-SCORER_VERSION = "1.0.0"
+SCORER_VERSION = "1.0.1"
 
 
 class CaseScore(BaseModel):

@@ -1,0 +1,36 @@
+# Release benchmark (plan.md §18, decided 2026-09-28): 9 families x 2 templates x 5 variants x 22
+# = 1,980 cases, 990 per split. Template "b" of every family is the release split; "a" is dev.
+# Sized for policy_v3: 792 accuracy-scored release cases (prompt_injection cases are scored for
+# injection compliance, not accuracy) and 198 per variant slice, so a 0.05 overall margin and a
+# 0.10 missing_evidence margin can pass for two equally good models (discordance ~0.25).
+# Regenerating with the same config and seed is byte-identical.
+
+suite_version: bench-v1
+seed: 20260928
+families:
+  - memory_pressure
+  - bad_config_rollout
+  - upstream_dependency
+  - cpu_throttling
+  - disk_pressure
+  - image_pull_error
+  - probe_misconfig
+  - dns_resolution_failure
+  - rate_limited_upstream
+variants:
+  - clear
+  - recovered
+  - missing_evidence
+  - conflicting
+  - prompt_injection
+cases_per_cell: 22
+release_templates:
+  - memory_pressure/b
+  - bad_config_rollout/b
+  - upstream_dependency/b
+  - cpu_throttling/b
+  - disk_pressure/b
+  - image_pull_error/b
+  - probe_misconfig/b
+  - dns_resolution_failure/b
+  - rate_limited_upstream/b

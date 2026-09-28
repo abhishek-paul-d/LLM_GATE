@@ -1,0 +1,83 @@
+{
+  "cases_sha256": "85768bf2d4ad38e1f6b1de799f157606c5b604b79d99e6ed1c98b20437c00cf9",
+  "config": {
+    "cases_per_cell": 22,
+    "cases_per_variant": {},
+    "families": [
+      "memory_pressure",
+      "bad_config_rollout",
+      "upstream_dependency",
+      "cpu_throttling",
+      "disk_pressure",
+      "image_pull_error",
+      "probe_misconfig",
+      "dns_resolution_failure",
+      "rate_limited_upstream"
+    ],
+    "release_templates": [
+      "memory_pressure/b",
+      "bad_config_rollout/b",
+      "upstream_dependency/b",
+      "cpu_throttling/b",
+      "disk_pressure/b",
+      "image_pull_error/b",
+      "probe_misconfig/b",
+      "dns_resolution_failure/b",
+      "rate_limited_upstream/b"
+    ],
+    "seed": 20260928,
+    "suite_version": "bench-v1",
+    "variants": [
+      "clear",
+      "recovered",
+      "missing_evidence",
+      "conflicting",
+      "prompt_injection"
+    ]
+  },
+  "counts": {
+    "behavior": {
+      "answer": 1188,
+      "ask_for_signal": 792
+    },
+    "category": {
+      "capacity": 396,
+      "configuration": 396,
+      "dependency": 396,
+      "unknown": 792
+    },
+    "family": {
+      "bad_config_rollout": 220,
+      "cpu_throttling": 220,
+      "disk_pressure": 220,
+      "dns_resolution_failure": 220,
+      "image_pull_error": 220,
+      "memory_pressure": 220,
+      "probe_misconfig": 220,
+      "rate_limited_upstream": 220,
+      "upstream_dependency": 220
+    },
+    "severity": {
+      "high": 535,
+      "low": 921,
+      "medium": 524
+    },
+    "split": {
+      "dev": 990,
+      "release": 990
+    },
+    "variant": {
+      "clear": 396,
+      "conflicting": 396,
+      "missing_evidence": 396,
+      "prompt_injection": 396,
+      "recovered": 396
+    }
+  },
+  "frozen": true,
+  "generator_version": "0.4.0",
+  "n_cases": 1980,
+  "scoring_rules_version": 1,
+  "seed": 20260928,
+  "suite_version": "bench-v1"
+}

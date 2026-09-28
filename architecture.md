@@ -174,10 +174,14 @@ About 5,200 lines of source code and 345 tests, all passing; ruff lint and forma
 ```text
 policies/policy_v1.yaml          demo release policy (with cost limits)
 policies/policy_v2.yaml          milestone policy: v1 without cost limits (cost arrives in Phase 4)
+policies/policy_v3.yaml          benchmark policy: v2 with margins sized for bench-v1 (0.05 overall, 0.10 missing_evidence)
 prompts/triage-v1.yaml           versioned prompt (system + user template)
 models/                          model specs (llama-3.1-8b-instruct-fp8, qwen3-8b-fp8, ministral-3-8b-instruct-fp8) + README
 suites/configs/starter-v1.yaml   suite recipe
 suites/starter-v1/               generated suite: cases.jsonl, manifest.json, review.json
+suites/configs/bench-v1.yaml     release benchmark recipe: 9 families, 22 cases per cell
+suites/bench-v1/                 release benchmark: 990 dev + 990 release cases (not yet reviewed or frozen)
+src/release_gate/generator/review.py  sampled review: stratified draw, review sheet, approve-by-sample
 docs/examples/                   example decisions and reports (promote, hold_quality, reject_latency)
 src/release_gate/
   cli.py                         `gate` command: decide | models | suite | mock | run
@@ -407,11 +411,12 @@ A variant transforms a clear case. It moves evidence around; `Draft` then re-der
 
 Conflicting cases are scored on acceptable categories and on mentioning both signals, and are left out of exact-label accuracy, because naming either supported cause is defensible.
 
-### Realism rules (generator 0.3.0)
+### Realism rules (generator 0.3.0 and 0.4.0)
 
-Found while reviewing `starter-v1`. None of them changes a label, and none draws random numbers, so all other cases stay byte-identical:
+Found while reviewing `starter-v1` (0.3.0) and the `bench-v1` dev sample (0.4.0). None of them changes a label, and none draws random numbers, so all other cases stay byte-identical:
 - **Pods vs replicas.** The alert lists at most 3 pods; when the deployment has more replicas the line says so (`pods: a, b, c (+2 more)`), matching "all 5 replicas ready" in recovery logs.
 - **A pod that crashes at startup logs nothing else.** Cause log lines can be marked `fatal` (a `FATAL` config or startup error). Any other line from that pod, such as a health check, a donor cause's timeout or an injected line, is moved to a healthy pod.
+- **A resolved alert shows incident metrics as peaks (0.4.0).** A recovered case already split the symptom into `_peak` and `_current`. Its cause metrics (e.g. `pvc_used`, `cpu_usage`, `upstream_429_rate`) now get a `_peak` suffix too, so a resolved `KubePersistentVolumeFillingUp` no longer shows the volume at 99% as if that were current. Values, ids and labels are unchanged (tested against starter-v1).
 - **Crash-loop alerts need repeated restarts.** `KubePodCrashLooping` fires after 15 minutes in back-off, so with a single restart in the hour the alert is `KubeContainerRestarting`.
 
 `HighErrorRate` firing below 1% (severity low) is kept: SLO burn-rate alerts do fire at sub-1% error rates. The frozen `starter-v1` stays at generator 0.2.0; the fixes apply to suites generated from now on.
@@ -577,7 +582,7 @@ flowchart LR
 
 Everything here is pure except `evaluation.py`, which does the file I/O. Scoring happens on the saved run, so a run from Colab is scored locally and can be re-scored or re-gated later without a GPU.
 
-**Per-response scores (`scorers/`, scorer v1.0.0).** `score_case(case, role, completion, grounding)` returns a `CaseScore`:
+**Per-response scores (`scorers/`, scorer v1.0.1).** `score_case(case, role, completion, grounding)` returns a `CaseScore`:
 
 | Field | Rule |
 |---|---|

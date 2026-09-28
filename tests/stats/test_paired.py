@@ -85,3 +85,21 @@ def test_mcnemar_exact():
     assert mcnemar_exact([True, False, True, False], [False, True, False, True]).p_value == 1.0
     with pytest.raises(ValueError):
         mcnemar_exact([True], [True, False])
+
+
+@pytest.mark.parametrize(
+    ("n", "margin", "passes"),
+    [
+        (792, 0.05, True),  # bench-v1 accuracy cases under policy_v3
+        (792, 0.02, False),  # the same suite under the old 0.02 margin
+        (198, 0.10, True),  # one bench-v1 slice under policy_v3's missing_evidence margin
+    ],
+)
+def test_bench_v1_can_pass_policy_v3_margins_for_equal_models(n, margin, passes):
+    """Two equally accurate models disagreeing on a quarter of the cases (plan §18 sizing)."""
+    quarter = n // 8  # n/8 baseline-only wins + n/8 candidate-only wins = 25% discordance
+    baseline = [1.0] * quarter + [0.0] * quarter + [1.0] * (n // 2) + [0.0] * (n - 2 * quarter - n // 2)
+    candidate = [0.0] * quarter + [1.0] * quarter + baseline[2 * quarter :]
+    est = paired_bootstrap({"acc": PairedSeries(baseline, candidate)}, resamples=2000, seed=7, confidence=0.95)["acc"]
+    assert est.delta_ci is not None
+    assert (est.delta_ci[0] > -margin) is passes

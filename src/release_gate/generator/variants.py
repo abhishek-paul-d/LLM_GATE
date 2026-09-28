@@ -7,6 +7,7 @@ phrasing) comes only from the same split as the case.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import timedelta
 
 from . import names
@@ -44,6 +45,9 @@ def _recovered(d: Draft, rng: Rng) -> None:
     peak = d.symptom
     d.symptom = Metric(f"{peak.name}_peak", peak.value, peak.unit, peak.limit)
     d.extra_metrics.append(Metric(f"{peak.name}_current", 0.0, peak.unit, peak.limit))
+    # Cause metrics were measured during the incident too. Unmarked, a resolved alert would
+    # still show e.g. pvc_used at 99% as if current, contradicting its own status (0.4.0).
+    d.causes = [replace(c, metrics=tuple(replace(m, name=f"{m.name}_peak") for m in c.metrics)) for c in d.causes]
     d.extra_logs.append(
         LogLine(d.resolved_at, "deployment-controller", f"deployment/{d.resource.name}: all {d.resource.replicas} replicas ready")
     )

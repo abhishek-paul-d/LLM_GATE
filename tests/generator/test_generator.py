@@ -95,13 +95,30 @@ def test_frozen_starter_suite_is_intact():
     assert validate_suite_dir(suite_dir) == []
 
 
+def test_bench_suite_matches_its_config():
+    """bench-v1 (the release benchmark) is exactly what its config generates, sized for policy_v3."""
+    suite_dir = ROOT / "suites" / "bench-v1"
+    shipped = read_cases(suite_dir)
+    assert shipped == generate_cases(load_config(ROOT / "suites" / "configs" / "bench-v1.yaml"))
+    release = [c for c in shipped if c.split == "release"]
+    assert Counter(c.split for c in shipped) == {"dev": 990, "release": 990}
+    assert sum(c.variant != "prompt_injection" for c in release) == 792  # accuracy-scored
+    assert set(Counter(c.variant for c in release).values()) == {198}  # each slice clears its margin
+    assert read_manifest(suite_dir).n_cases == 1980
+
+
 def test_generator_changes_since_starter_v1_are_text_only():
-    """Realism fixes in 0.3.0 may change alert text, never case ids or labels, of the same config."""
+    """Realism fixes since 0.2.0 may change alert text and metric names, never ids, labels or values."""
     frozen = read_cases(ROOT / "suites" / "starter-v1")
     fresh = generate_cases(load_config(STARTER))
     assert [c.case_id for c in fresh] == [c.case_id for c in frozen]
     for old, new in zip(frozen, fresh, strict=True):
-        assert old.model_dump(exclude={"input_text"}) == new.model_dump(exclude={"input_text"}), old.case_id
+        exclude = {"input_text", "metrics"}
+        assert old.model_dump(exclude=exclude) == new.model_dump(exclude=exclude), old.case_id
+        for m_old, m_new in zip(old.metrics, new.metrics, strict=True):
+            assert m_old.model_dump(exclude={"name"}) == m_new.model_dump(exclude={"name"}), old.case_id
+            # 0.4.0: a recovered case's cause metrics gain _peak
+            assert m_new.name in (m_old.name, f"{m_old.name}_peak"), old.case_id
 
 
 def test_probe_suite_is_valid(probe):
@@ -411,6 +428,17 @@ def test_crash_loop_alert_needs_repeated_restarts(probe_all):
         elif _alert(c) == SINGLE_RESTART_ALERT and c.symptom.metric.value < CRASH_LOOP_MIN_RESTARTS:
             seen["single_restart"] += 1
     assert seen["crash_loop"] and seen["single_restart"]
+
+
+def test_a_resolved_alert_shows_incident_metrics_only_as_peak_values(probe_all):
+    """0.4.0: an unmarked incident value (pvc_used at 99%) would contradict status: resolved."""
+    marked = 0
+    for c in probe_all:
+        if c.variant == "recovered":
+            names = [m.name for m in c.metrics]
+            assert all(n.endswith(("_peak", "_current")) for n in names), (c.case_id, names)
+            marked += len(names) > 2  # symptom peak/current plus at least one cause metric
+    assert marked > 0
 
 
 def test_cases_per_variant_overrides_cell_count():

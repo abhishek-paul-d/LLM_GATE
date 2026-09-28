@@ -78,7 +78,23 @@ def test_score_rejects_then_replay_reproduces_and_detects_changes(
     saved["outcome"] = "PROMOTE"
     (run_dir / DECISION_FILE).write_text(json.dumps(saved), encoding="utf-8")
     assert main(["replay", str(run_dir)]) == 3
-    assert DECISION_FILE in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert DECISION_FILE in err
+    assert "cause:" not in err  # same code, so the saved files were edited
+
+
+def test_replay_names_a_scorer_version_change_as_the_cause(
+    tmp_path: Path, policy_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_dir = _run(tmp_path, "unsafe")
+    assert main(["score", str(run_dir), "--policy", str(policy_path)]) == 2
+    record = json.loads((run_dir / EVALUATION_FILE).read_text(encoding="utf-8"))
+    record["scorer_version"] = "0.9.0"
+    (run_dir / EVALUATION_FILE).write_text(json.dumps(record), encoding="utf-8")
+    capsys.readouterr()
+
+    assert main(["replay", str(run_dir)]) == 3
+    assert "cause: scorer_version 0.9.0 -> " in capsys.readouterr().err
 
 
 def test_replay_policy_what_if_does_not_change_saved_decision(

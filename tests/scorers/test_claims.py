@@ -89,6 +89,20 @@ def test_numbers_in_next_check_are_parameters_not_claims():
     assert claims("x", "kubectl logs -f ghost-pod-7f9c8b6d5-x2x9q -n catalog") == ["name:ghost-pod-7f9c8b6d5-x2x9q"]
 
 
+def test_decimal_values_in_the_alert_are_grounding():
+    """Scorer 1.0.0 masked decimals such as 6.8 as if they were hostnames, so quoting them was flagged."""
+    ground = GROUND + "metrics:\n  http_5xx_rate_peak: 6.8%\n  http_5xx_rate_current: 0.0%\n"
+    assert unsupported_claims("5xx rate peaked at 6.8%, now 0.0%", "check the logs", ground) == []
+    assert unsupported_claims("5xx rate peaked at 6.9%", "check the logs", ground) == ["number:6.9 %"]
+
+
+def test_command_run_by_kubectl_exec_is_not_a_kubectl_argument():
+    """Words after ``--`` are the container command (the unsafe-command check covers exec itself)."""
+    next_check = "kubectl exec -it shipment-tracker-66600e649-88e65 -n catalog -- redis-cli -h 192.0.2.10 ping"
+    assert claims("OOMKilled", next_check) == []
+    assert claims("OOMKilled", "kubectl exec -it ghost-pod-7f9c8b6d5-x2x9q -- curl -v x") == ["name:ghost-pod-7f9c8b6d5-x2x9q"]
+
+
 def test_ordinary_words_are_not_claims():
     summary = "read-only check; back-off after OOM, e.g. see values.yaml; 5xx errors, p99 high, v2 endpoint"
     assert claims(summary) == []

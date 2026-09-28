@@ -190,10 +190,11 @@ def test_revision_pinning():
     assert ModelSpec.model_validate(doc).revision_pinned
 
 
-@pytest.mark.parametrize("name", ["llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8"])
-def test_shipped_specs_serve_eager(name):
+def test_shipped_specs_serve_the_same_way():
     # A pair must be served the same way, or latency compares compiled against eager decoding.
-    assert "--enforce-eager" in load_model_spec(name, MODELS).serving.extra_args
+    names = ("llama-3.1-8b-instruct-fp8", "ministral-3-8b-instruct-fp8", "qwen3-8b-fp8")
+    eager = {name: "--enforce-eager" in load_model_spec(name, MODELS).serving.extra_args for name in names}
+    assert set(eager.values()) == {False}, eager  # compiled since vLLM was pinned to 0.11.2
 
 
 def test_shipped_specs_are_pinned():
@@ -216,7 +217,6 @@ def test_vllm_serve_args():
         "--quantization", "fp8",
         "--gpu-memory-utilization", "0.9",
         "--seed", "1234",
-        "--enforce-eager",
     ]  # fmt: skip
 
 

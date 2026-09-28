@@ -18,7 +18,14 @@ import yaml
 from pydantic import ValidationError
 
 from release_gate import registry
-from release_gate.evaluation import EvaluationError, evaluate_run, replay_run, write_evaluation
+from release_gate.evaluation import (
+    EVALUATION_FILE,
+    EvaluationError,
+    EvaluationRecord,
+    evaluate_run,
+    replay_run,
+    write_evaluation,
+)
 from release_gate.gate import evaluate, load_metrics, load_policy
 from release_gate.generator import (
     FrozenSuiteError,
@@ -30,6 +37,7 @@ from release_gate.generator import (
     write_suite,
 )
 from release_gate.generator import build as suite_build
+from release_gate.generator import review as suite_review
 from release_gate.generator.schema import ReviewRecord
 from release_gate.mock import PERSONAS, MockBackend, make_server
 from release_gate.report import render_markdown
@@ -88,12 +96,28 @@ def main(argv: list[str] | None = None) -> int:
     suite_show_parser.add_argument("suite_dir", type=Path)
     suite_show_parser.add_argument("--split", choices=("dev", "release"))
     suite_show_parser.add_argument("--case", dest="case_id")
-    suite_review_parser = suite_subparsers.add_parser("review", help="record a review for one case")
+    suite_sample_parser = suite_subparsers.add_parser(
+        "sample", help="draw and record a stratified review sample and write its review sheet"
+    )
+    suite_sample_parser.add_argument("suite_dir", type=Path)
+    suite_sample_parser.add_argument("--split", choices=("dev", "release"), required=True)
+    suite_sample_parser.add_argument("--per-cell", type=int, default=2)
+    suite_sample_parser.add_argument("--seed", type=int, help="default: the suite's generator seed")
+    suite_sample_parser.add_argument("--out", type=Path, help="review sheet path (default: <suite_dir>/review_sample_<split>.md)")
+    suite_review_parser = suite_subparsers.add_parser("review", help="record a review for one case or a whole sample")
     suite_review_parser.add_argument("suite_dir", type=Path)
-    suite_review_parser.add_argument("--case", dest="case_id", required=True)
+    suite_review_target = suite_review_parser.add_mutually_exclusive_group(required=True)
+    suite_review_target.add_argument("--case", dest="case_id")
+    suite_review_target.add_argument("--sample", choices=("dev", "release"), help="every case in that split's sample")
     suite_review_parser.add_argument("--status", choices=("approved", "rejected", "candidate"), required=True)
     suite_review_parser.add_argument("--reviewer", required=True)
     suite_review_parser.add_argument("--notes", default="")
+    suite_approve_parser = suite_subparsers.add_parser(
+        "approve-by-sample", help="approve a split's remaining cases once its whole sample is approved"
+    )
+    suite_approve_parser.add_argument("suite_dir", type=Path)
+    suite_approve_parser.add_argument("--split", choices=("dev", "release"), required=True)
+    suite_approve_parser.add_argument("--reviewer", required=True)
 
     mock_parser = subparsers.add_parser("mock", help="run a local mock model server")
     mock_subparsers = mock_parser.add_subparsers(dest="mock_command", required=True, parser_class=ExitUsageArgumentParser)
@@ -267,6 +291,16 @@ def _score_command(args: argparse.Namespace) -> int:
         return EXIT_USAGE
 
 
+def _version_changes(run_dir: Path, current: EvaluationRecord) -> list[str]:
+    """Code versions that differ between the saved evaluation and this replay (why it can't match)."""
+    try:
+        saved = json.loads((run_dir / EVALUATION_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    fields = ("scorer_version", "gate_version", "stats_method")
+    return [f"{f} {saved.get(f)} -> {getattr(current, f)}" for f in fields if saved.get(f) != getattr(current, f)]
+
+
 def _replay_command(args: argparse.Namespace) -> int:
     run_dir = args.run
     if not run_dir.exists() and (Path("runs") / run_dir).exists():
@@ -285,6 +319,8 @@ def _replay_command(args: argparse.Namespace) -> int:
                 "error: replay does not reproduce the saved evaluation: " + ", ".join(differences),
                 file=sys.stderr,
             )
+            for change in _version_changes(run_dir, evaluation.record):
+                print(f"  cause: {change}; the saved evaluation belongs to the older code", file=sys.stderr)
             return 3
         else:
             print("replay reproduces the saved evaluation")
@@ -376,29 +412,44 @@ def _run_suite_command(args: argparse.Namespace) -> int:
                 print()
             return 0
 
+        if args.suite_command == "sample":
+            # Writes case text only to the sheet, never to stdout: release cases stay out of logs.
+            sample = suite_review.record_sample(suite_dir, args.split, args.per_cell, args.seed)
+            out = args.out or suite_dir / f"review_sample_{args.split}.md"
+            out.write_text(suite_review.render_sheet(read_cases(suite_dir), sample, suite_dir), encoding="utf-8", newline="\n")
+            print(f"sampled {len(sample.case_ids)} {args.split} cases (per cell {sample.per_cell}, seed {sample.seed})")
+            print(f"review sheet: {out}")
+            return 0
+
+        if args.suite_command == "approve-by-sample":
+            approved = suite_review.approve_by_sample(suite_dir, args.split, args.reviewer)
+            print(f"approved {approved} remaining {args.split} case(s) by sample")
+            return 0
+
         manifest = read_manifest(suite_dir)
         if manifest.frozen:
             print("error: suite is frozen", file=sys.stderr)
             return EXIT_USAGE
         reviews = suite_build.read_reviews(suite_dir)
-        if args.case_id not in reviews:
-            print(f"error: case {args.case_id} not found", file=sys.stderr)
+        cases_by_id = {case.case_id: case for case in read_cases(suite_dir)}
+        case_ids = suite_review.current_sample(suite_dir, args.sample).case_ids if args.sample else [args.case_id]
+        missing = [case_id for case_id in case_ids if case_id not in reviews or case_id not in cases_by_id]
+        if missing:
+            print(f"error: case {missing[0]} not found", file=sys.stderr)
             return EXIT_USAGE
-        case = next((candidate for candidate in read_cases(suite_dir) if candidate.case_id == args.case_id), None)
-        if case is None:
-            print(f"error: case {args.case_id} not found", file=sys.stderr)
-            return EXIT_USAGE
-        reviews[args.case_id] = ReviewRecord(
-            status=args.status,
-            case_sha256=suite_build.case_sha256(case),
-            reviewer=args.reviewer,
-            notes=args.notes or "",
-        )
+        for case_id in case_ids:
+            reviews[case_id] = ReviewRecord(
+                status=args.status,
+                case_sha256=suite_build.case_sha256(cases_by_id[case_id]),
+                reviewer=args.reviewer,
+                notes=args.notes or "",
+            )
         suite_build._write_json(
             suite_dir / suite_build.REVIEW_FILE,
             {key: review.model_dump(mode="json") for key, review in reviews.items()},
         )
-        print(f"{args.case_id}: {args.status}")
+        target = f"{len(case_ids)} sampled {args.sample} case(s)" if args.sample else args.case_id
+        print(f"{target}: {args.status}")
         return 0
     except (OSError, ValueError, yaml.YAMLError, FrozenSuiteError) as exc:
         print(f"error: {exc}", file=sys.stderr)

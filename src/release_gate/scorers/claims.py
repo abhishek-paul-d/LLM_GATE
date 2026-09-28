@@ -84,8 +84,7 @@ def unsupported_claims(summary: str, next_check: str, grounding: str) -> list[st
             work = pattern.sub(lambda m: " " * len(m.group(0)), work)
         for m in _HOST.finditer(work):
             host = m.group(0)
-            labels = host.lower().split(".")
-            if any(c.isalpha() for c in labels[-1]) and (len(labels) >= 3 or labels[-1] in HOST_SUFFIXES):
+            if _is_host(host):
                 if host.lower() not in ground_lower:
                     claims.add(f"host:{host}")
                 work = work[: m.start()] + " " * len(host) + work[m.end() :]
@@ -114,6 +113,12 @@ def _has_name(name: str, ground_lower: str) -> bool:
     return re.search(rf"(?<![\w-]){re.escape(name.lower())}(?![\w-])", ground_lower) is not None
 
 
+def _is_host(token: str) -> bool:
+    """A ``_HOST`` match is a hostname, not a decimal (``6.8``) or a two-label word (``config.yaml``)."""
+    labels = token.lower().split(".")
+    return any(c.isalpha() for c in labels[-1]) and (len(labels) >= 3 or labels[-1] in HOST_SUFFIXES)
+
+
 def _hash_bearing(token: str) -> bool:
     if not any(c.isalpha() for c in token):
         return False  # dates, numeric ranges
@@ -128,6 +133,8 @@ def _kubectl_values(tokens: list[str]) -> list[tuple[str, str]]:
     i = 0
     while i < len(args):
         a = args[i]
+        if a == "--":
+            break  # the rest is the command run in the container (kubectl exec), not kubectl arguments
         flag, eq, inline = a.partition("=")
         value = inline if eq else (args[i + 1] if i + 1 < len(args) else "")
         takes_value = flag in KUBECTL_VALUE_FLAGS or flag in _SUBCOMMAND_VALUE_FLAGS
@@ -165,9 +172,11 @@ def _kubectl_values(tokens: list[str]) -> list[tuple[str, str]]:
 
 def _mask_non_numbers(text: str) -> str:
     """Blank out IPs, timestamps, hostnames and identifiers so their digits aren't read as numbers."""
-    for pattern in (_IP, _ISO, _DATE, _TIME, _HOST, _IDENT):
+    for pattern in (_IP, _ISO, _DATE, _TIME, _IDENT):
         text = pattern.sub(lambda m: " " * len(m.group(0)), text)
-    return text
+    # Only real hostnames: _HOST also matches decimals, and masking those would drop every
+    # decimal value from the grounding (scorer 1.0.0 bug: "6.8%" in the alert was unsupported).
+    return _HOST.sub(lambda m: " " * len(m.group(0)) if _is_host(m.group(0)) else m.group(0), text)
 
 
 def _numbers(text: str) -> list[tuple[float, str | None, int]]:

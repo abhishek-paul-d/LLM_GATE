@@ -41,3 +41,6 @@ def test_notebook_never_leaves_billed_servers_waiting() -> None:
     assert "finally:" in run_cell and "stop_servers()" in run_cell.split("finally:", 1)[1]
     assert "check=True" in run_cell and '"--run-id",' in run_cell
     assert all("iterdir" not in text for text in source.values())
+    # An unreviewed suite is refused before any billed server starts.
+    assert ids.index("model-fit") < ids.index("serve-and-run")
+    assert "if not suite_manifest.frozen:" in source["model-fit"]
