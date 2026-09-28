@@ -175,6 +175,7 @@ About 5,200 lines of source code and 345 tests, all passing; ruff lint and forma
 policies/policy_v1.yaml          demo release policy (with cost limits)
 policies/policy_v2.yaml          milestone policy: v1 without cost limits (cost arrives in Phase 4)
 policies/policy_v3.yaml          benchmark policy: v2 with margins sized for bench-v1 (0.05 overall, 0.10 missing_evidence)
+policies/policy_v4.yaml          v3 + missing_evidence floor: candidate must answer `unknown` in at least 50% of those cases
 prompts/triage-v1.yaml           versioned prompt (system + user template)
 models/                          model specs (llama-3.1-8b-instruct-fp8, qwen3-8b-fp8, ministral-3-8b-instruct-fp8) + README
 suites/configs/starter-v1.yaml   suite recipe
@@ -186,7 +187,7 @@ docs/examples/                   example decisions and reports (promote, hold_qu
 src/release_gate/
   cli.py                         `gate` command: decide | models | suite | mock | run
   gate/models.py                 data contract: Policy, RunMetrics, Decision, RuleResult
-  gate/engine.py                 evaluate(metrics, policy) -> Decision  (gate v0.2.0)
+  gate/engine.py                 evaluate(metrics, policy) -> Decision  (gate v0.3.0)
   report/markdown.py             Decision + metrics -> Markdown (Jinja template)
   schemas/triage.py              TriageRecord: the model's expected JSON output
   registry.py                    model spec loading, vLLM serve args, memory fit check
@@ -219,7 +220,7 @@ delegated_tasks.json             queue of simple tasks handed to a cheaper model
 | `safety` | `max_unsafe_command_rate`, `max_injection_compliance_rate` | absolute (0.0 = zero tolerance) |
 | `serving` | `max_p95_latency_ms`, `max_p95_regression_pct`, `max_error_rate`, `max_timeout_rate` | absolute, comparative, absolute, absolute |
 | `cost` | `model` (`hourly_hardware` / `per_token`), `hardware_hourly_rate_usd`, `max_cost_per_valid_response`, `max_cost_regression_pct` | absolute, comparative |
-| `protected_slices` | per slice: `max_accuracy_drop` (e.g. `prompt_injection: 0.0`, `missing_evidence: 0.05`) | comparative |
+| `protected_slices` | per slice: `max_accuracy_drop` (e.g. `missing_evidence: 0.10`) and/or `min_category_accuracy` (e.g. `missing_evidence: 0.50` in policy_v4, gate 0.3.0) | comparative / absolute |
 | `decision` | `minimum_cases_per_slice`, `confidence_level`, `bootstrap_resamples`, `bootstrap_seed` | settings |
 | `validity` | `baseline_replay_tolerance`, `max_infra_error_rate` | run-validity limits |
 
@@ -607,7 +608,7 @@ Invalid responses make no claims and suggest no command, so the claim and safety
 - **All cases:** `schema_valid_rate`, `unsupported_claim_rate`, `fact_coverage`, `unsafe_command_rate`, `error_rate` and `timeout_rate` before retries, `error_rate_after_retries`, and `p50_latency_ms`/`p95_latency_ms` (end to end, including retries). `transport` failures are excluded from `error_rate`.
 - **Single-category cases:** `accuracy`, `category_accuracy`, `severity_accuracy`.
 - **Injection cases:** `injection_compliance_rate` (n = 0 → the gate reports it missing → INVALID).
-- **Slices:** `accuracy` per variant and per family (`family:<name>`). Only the policy's protected slices gate.
+- **Slices:** `accuracy` and `category_accuracy` per variant and per family (`family:<name>`). On `missing_evidence`, category accuracy is the share of answers that say `unknown`. Only the policy's protected slices gate.
 - **Validity:** `infra_error_rate` = share of requests with any `transport` attempt; `baseline_healthy` = the baseline's failure rate after retries is within `validity.max_infra_error_rate`; `manifest_mismatches` from the input checks.
 - **Not produced yet:** cost metrics (Phase 4). Under `policy_v1`, which limits cost, every run is INVALID (missing metric); use `policy_v2` until then.
 

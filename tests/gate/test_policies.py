@@ -33,3 +33,14 @@ def test_policy_v3_only_resizes_the_accuracy_margins():
     same = {"policy_version", "quality", "protected_slices"}
     assert v3.model_dump(exclude=same) == v2.model_dump(exclude=same)
     assert v3.quality.model_dump(exclude={"max_accuracy_drop"}) == v2.quality.model_dump(exclude={"max_accuracy_drop"})
+
+
+def test_policy_v4_is_v3_plus_a_missing_evidence_floor():
+    """v4 (2026-09-28): a model that never answers "unknown" fails instead of passing 0 vs 0."""
+    v3, v4 = load_policy(POLICIES / "policy_v3.yaml"), load_policy(POLICIES / "policy_v4.yaml")
+    assert v4.protected_slices["missing_evidence"].min_category_accuracy == 0.5
+    assert v4.protected_slices["missing_evidence"].max_accuracy_drop == v3.protected_slices["missing_evidence"].max_accuracy_drop
+    assert v4.model_dump(exclude={"policy_version", "protected_slices"}) == v3.model_dump(
+        exclude={"policy_version", "protected_slices"}
+    )
+    assert set(v4.protected_slices) == set(v3.protected_slices)

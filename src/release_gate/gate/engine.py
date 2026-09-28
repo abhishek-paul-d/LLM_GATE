@@ -38,7 +38,7 @@ from .models import (
     Status,
 )
 
-GATE_VERSION = "0.2.0"
+GATE_VERSION = "0.3.0"  # 0.3.0: protected slices may set min_category_accuracy
 
 # Absorbs float noise such as 0.1 + 0.2 when a value sits exactly on a limit.
 _EPS = 1e-9
@@ -283,31 +283,43 @@ def _metric_rules(m: RunMetrics, p: Policy) -> Iterator[RuleResult]:
         )
 
 
+# (rule suffix, SliceLimits field, slice metric, check), in the order rules appear per slice.
+_SLICE_RULES: tuple[tuple[str, str, str, Check], ...] = (
+    ("accuracy_drop", "max_accuracy_drop", "accuracy", _max_drop),
+    ("min_category_accuracy", "min_category_accuracy", "category_accuracy", _absolute_min),
+)
+
+
 def _slice_rules(m: RunMetrics, p: Policy) -> Iterator[RuleResult]:
     minimum = p.decision.minimum_cases_per_slice
     for name in sorted(p.protected_slices):
         limits = p.protected_slices[name]
-        rule_id = f"slice.{name}.accuracy_drop"
-        metric_path = f"slices.{name}.accuracy"
-        policy_field = f"protected_slices.{name}.max_accuracy_drop"
-        comparison = m.slices.get(name, {}).get("accuracy")
-        if comparison is not None and 0 < comparison.n < minimum:
-            yield RuleResult(
-                rule_id=rule_id,
-                category="slice",
-                status=Status.INSUFFICIENT,
-                message=f"{metric_path}: {comparison.n} cases, protected slices need at least {minimum}",
-                metric=metric_path,
-                policy_field=policy_field,
-                limit=-limits.max_accuracy_drop + 0.0,
-                direction=">=",
-                observed=comparison.delta,
-                ci=comparison.delta_ci,
-                n=comparison.n,
-                evidence="ci",
-            )
-            continue
-        yield _apply(rule_id, "slice", metric_path, policy_field, comparison, limits.max_accuracy_drop, _max_drop, None)
+        for suffix, field, metric, check in _SLICE_RULES:
+            limit = getattr(limits, field)
+            if limit is None:
+                continue
+            rule_id = f"slice.{name}.{suffix}"
+            metric_path = f"slices.{name}.{metric}"
+            policy_field = f"protected_slices.{name}.{field}"
+            comparison = m.slices.get(name, {}).get(metric)
+            if comparison is not None and 0 < comparison.n < minimum:
+                e = check(comparison, limit)  # for the reported values; too few cases to judge
+                yield RuleResult(
+                    rule_id=rule_id,
+                    category="slice",
+                    status=Status.INSUFFICIENT,
+                    message=f"{metric_path}: {comparison.n} cases, protected slices need at least {minimum}",
+                    metric=metric_path,
+                    policy_field=policy_field,
+                    limit=e.limit,
+                    direction=e.direction,
+                    observed=e.observed,
+                    ci=e.ci,
+                    n=comparison.n,
+                    evidence=e.evidence,
+                )
+                continue
+            yield _apply(rule_id, "slice", metric_path, policy_field, comparison, limit, check, None)
 
 
 # --------------------------------------------------------------------------- decision

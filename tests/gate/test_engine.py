@@ -183,6 +183,69 @@ def test_outcomes(name, patches, outcome, triggered):
     assert decision.triggered_rules == triggered
 
 
+# --------------------------------------------------------------------------- slice floor (gate 0.3.0)
+
+FLOOR = {"protected_slices__missing_evidence__min_category_accuracy": 0.5}
+NEVER_UNKNOWN = {  # bench-v1 run 1: neither model ever answered "unknown" on missing_evidence
+    "slices__missing_evidence__accuracy__baseline": 0.0,
+    "slices__missing_evidence__accuracy__candidate": 0.0,
+    "slices__missing_evidence__accuracy__delta_ci": [0.0, 0.0],
+    "slices__missing_evidence__category_accuracy__baseline": 0.0,
+    "slices__missing_evidence__category_accuracy__candidate": 0.0,
+    "slices__missing_evidence__category_accuracy__delta_ci": [0.0, 0.0],
+}
+FLOOR_CASES: list[tuple[str, dict[str, Any], Outcome, list[str]]] = [
+    ("slice floor met", {}, Outcome.PROMOTE, []),
+    (
+        "both models at zero: drop passes, floor fails",
+        NEVER_UNKNOWN,
+        Outcome.REJECT,
+        ["slice.missing_evidence.min_category_accuracy"],
+    ),
+    (
+        "slice floor on too few cases",
+        {"slices__missing_evidence__accuracy__n": 12, "slices__missing_evidence__category_accuracy__n": 12},
+        Outcome.HOLD,
+        ["slice.missing_evidence.accuracy_drop", "slice.missing_evidence.min_category_accuracy"],
+    ),
+    (
+        "slice floor metric missing",
+        {"slices__missing_evidence__category_accuracy": _DELETE},
+        Outcome.INVALID,
+        ["slice.missing_evidence.min_category_accuracy"],
+    ),
+]
+
+
+@pytest.mark.parametrize(("name", "patches", "outcome", "triggered"), FLOOR_CASES, ids=[c[0] for c in FLOOR_CASES])
+def test_slice_floor_outcomes(name, patches, outcome, triggered):
+    decision = evaluate(_metrics(**patches), _policy(**FLOOR))
+    assert decision.outcome == outcome, decision.reason
+    assert decision.triggered_rules == triggered
+
+
+def test_slice_floor_rule_reports_candidate_point_estimate():
+    d = evaluate(_metrics(**NEVER_UNKNOWN), _policy(**FLOOR))
+    before = evaluate(_metrics(**NEVER_UNKNOWN), load_policy(POLICY_PATH))
+    assert _rule(d, "slice.missing_evidence.accuracy_drop") == _rule(before, "slice.missing_evidence.accuracy_drop")
+    r = _rule(d, "slice.missing_evidence.min_category_accuracy")
+    assert (r.status, r.limit, r.direction, r.observed, r.ci, r.n, r.evidence) == (
+        Status.FAIL, 0.5, ">=", 0.0, None, 30, "point_estimate",
+    )  # fmt: skip
+    assert r.policy_field == "protected_slices.missing_evidence.min_category_accuracy"
+
+
+def test_slice_may_set_only_a_floor():
+    policy = _policy(protected_slices__missing_evidence={"min_category_accuracy": 0.5})
+    rules = [r.rule_id for r in evaluate(_metrics(), policy).rules if r.rule_id.startswith("slice.missing_evidence")]
+    assert rules == ["slice.missing_evidence.min_category_accuracy"]
+
+
+def test_slice_without_any_limit_is_rejected():
+    with pytest.raises(ValidationError, match="needs max_accuracy_drop, min_category_accuracy, or both"):
+        _policy(protected_slices__missing_evidence={})
+
+
 # --------------------------------------------------------------------------- precedence
 
 

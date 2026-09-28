@@ -57,7 +57,17 @@ class CostPolicy(_Strict):
 
 
 class SliceLimits(_Strict):
-    max_accuracy_drop: float = Field(ge=0.0, le=1.0)
+    # comparative: paired CI of the slice's accuracy delta must stay above -max_accuracy_drop
+    max_accuracy_drop: Rate | None = None
+    # absolute: the candidate's category accuracy on the slice. A drop limit alone passes two
+    # models that both score 0 (e.g. neither ever answers "unknown" on missing_evidence).
+    min_category_accuracy: Rate | None = None
+
+    @model_validator(mode="after")
+    def _at_least_one_limit(self) -> SliceLimits:
+        if self.max_accuracy_drop is None and self.min_category_accuracy is None:
+            raise ValueError("a protected slice needs max_accuracy_drop, min_category_accuracy, or both")
+        return self
 
 
 class DecisionSettings(_Strict):

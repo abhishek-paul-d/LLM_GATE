@@ -44,10 +44,12 @@ A rule passes when Observed meets the Limit condition; for `ci` evidence the who
 
 ## Slices
 
-| Slice | Protected | Baseline | Candidate | Delta | Delta CI | n |
-| --- | --- | ---: | ---: | ---: | --- | ---: |
+Baseline, Candidate and Delta are accuracy (category and severity both right). Category accuracy is shown as baseline / candidate; on `missing_evidence` it is the share of answers that say `unknown`.
+
+| Slice | Protected | Baseline | Candidate | Delta | Delta CI | Category accuracy | n |
+| --- | --- | ---: | ---: | ---: | --- | ---: | ---: |
 {% for row in slices %}
-| {{ row.name }} | {{ row.protected }} | {{ row.baseline }} | {{ row.candidate }} | {{ row.delta }} | {{ row.delta_ci }} | {{ row.n }} |
+| {{ row.name }} | {{ row.protected }} | {{ row.baseline }} | {{ row.candidate }} | {{ row.delta }} | {{ row.delta_ci }} | {{ row.category }} | {{ row.n }} |
 {% endfor %}
 
 ## Limitations

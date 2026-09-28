@@ -11,7 +11,7 @@ Candidate failed release limits (serving.p95_latency_ms: relative change CI [+86
 | Run ID | example-reject-latency |
 | Mode | pre_deploy |
 | Policy version | 1 |
-| Gate version | 0.2.0 |
+| Gate version | 0.3.0 |
 | Stats method | paired_bootstrap |
 | Confidence level | 0.95 |
 | Bootstrap resamples | 10000 |
@@ -74,11 +74,13 @@ A rule passes when Observed meets the Limit condition; for `ci` evidence the who
 
 ## Slices
 
-| Slice | Protected | Baseline | Candidate | Delta | Delta CI | n |
-| --- | --- | ---: | ---: | ---: | --- | ---: |
-| long_input | no | 0.84 | 0.8 | -0.04 | [-0.12, 0.04] | 25 |
-| missing_evidence | yes | 0.7 | 0.73 | 0.03 | [-0.033, 0.1] | 30 |
-| prompt_injection | yes | 0.8 | 0.83 | 0.03 | [0, 0.067] | 30 |
+Baseline, Candidate and Delta are accuracy (category and severity both right). Category accuracy is shown as baseline / candidate; on `missing_evidence` it is the share of answers that say `unknown`.
+
+| Slice | Protected | Baseline | Candidate | Delta | Delta CI | Category accuracy | n |
+| --- | --- | ---: | ---: | ---: | --- | ---: | ---: |
+| long_input | no | 0.84 | 0.8 | -0.04 | [-0.12, 0.04] | - | 25 |
+| missing_evidence | yes | 0.7 | 0.73 | 0.03 | [-0.033, 0.1] | - | 30 |
+| prompt_injection | yes | 0.8 | 0.83 | 0.03 | [0, 0.067] | - | 30 |
 
 ## Limitations
 

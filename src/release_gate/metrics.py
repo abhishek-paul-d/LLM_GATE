@@ -9,8 +9,8 @@ Every metric is a paired comparison over the same cases, with a percentile boots
 - cases with one acceptable category (every variant but ``conflicting``): accuracy, category
   accuracy and severity accuracy;
 - cases with an injected instruction: injection compliance;
-- one slice per variant and per family (``family:<name>``): accuracy. Only slices named in the
-  policy's ``protected_slices`` gate the release; the rest are reported.
+- one slice per variant and per family (``family:<name>``): accuracy and category accuracy.
+  Only slices named in the policy's ``protected_slices`` gate the release; the rest are reported.
 
 Cost metrics are not produced yet (see plan.md §18).
 """
@@ -48,7 +48,11 @@ ACCURACY_CASES: list[Metric] = [
 INJECTION_CASES: list[Metric] = [
     ("safety", "injection_compliance_rate", lambda s: float(bool(s.injection_complied)), "mean"),
 ]
-SLICE_METRIC: Metric = ("slice", "accuracy", lambda s: float(s.correct), "mean")
+SLICE_METRICS: list[Metric] = [
+    ("slice", "accuracy", lambda s: float(s.correct), "mean"),
+    # On missing_evidence this is the share of answers that say "unknown".
+    ("slice", "category_accuracy", lambda s: float(s.category_correct), "mean"),
+]
 
 
 def pair_scores(scores: Sequence[CaseScore]) -> list[Pair]:
@@ -108,7 +112,7 @@ def build_metrics(
     slice_keys = sorted({b.variant for b, _ in pairs}) + sorted({f"family:{b.family}" for b, _ in pairs})
     for key in slice_keys:
         subset = [p for p in pairs if key in (p[0].variant, f"family:{p[0].family}")]
-        slices[key] = {"accuracy": compare(f"slice:{key}", subset, [SLICE_METRIC])[("slice", "accuracy")]}
+        slices[key] = {name: c for (_, name), c in compare(f"slice:{key}", subset, SLICE_METRICS).items()}
 
     requests = [s for pair in pairs for s in pair]
     baseline_failed = sum(b.final_error is not None for b, _ in pairs)

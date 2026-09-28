@@ -36,7 +36,8 @@
       "accuracy": {"baseline": 0.8, "candidate": 0.83, "n": 30, "delta_ci": [0.0, 0.067]}
     },
     "missing_evidence": {
-      "accuracy": {"baseline": 0.7, "candidate": 0.73, "n": 30, "delta_ci": [-0.033, 0.1]}
+      "accuracy": {"baseline": 0.7, "candidate": 0.73, "n": 30, "delta_ci": [-0.033, 0.1]},
+      "category_accuracy": {"baseline": 0.77, "candidate": 0.8, "n": 30, "delta_ci": [-0.033, 0.1]}
     },
     "long_input": {
       "accuracy": {"baseline": 0.84, "candidate": 0.8, "n": 25, "delta_ci": [-0.12, 0.04]}

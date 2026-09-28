@@ -74,20 +74,24 @@ def render_markdown(decision: Decision, metrics: RunMetrics) -> str:
         for name in ("quality", "safety", "serving", "cost")
         if (section := getattr(metrics, name))
     ]
-    protected_rules = {rule.rule_id for rule in decision.rules}
+    protected = {rule.metric.split(".")[1] for rule in decision.rules if rule.category == "slice" and rule.metric}
     slice_rows = []
     for name, slice_metrics in sorted(metrics.slices.items()):
         comparison = slice_metrics.get("accuracy")
         if comparison is None:
             continue
+        category = slice_metrics.get("category_accuracy")
         slice_rows.append(
             {
                 "name": name,
-                "protected": "yes" if f"slice.{name}.accuracy_drop" in protected_rules else "no",
+                "protected": "yes" if name in protected else "no",
                 "baseline": _format_number(comparison.baseline),
                 "candidate": _format_number(comparison.candidate),
                 "delta": _format_number(comparison.delta),
                 "delta_ci": _format_ci(comparison.delta_ci),
+                "category": "-"
+                if category is None
+                else f"{_format_number(category.baseline)} / {_format_number(category.candidate)}",
                 "n": comparison.n,
             }
         )
